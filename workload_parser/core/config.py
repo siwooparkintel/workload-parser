@@ -101,6 +101,36 @@ class ParserConfig:
                         "delimiter": ",",
                         "skip_rows": 0
                     }
+                },
+                "pacs": {
+                    "name": "pacs",
+                    "enabled": True,
+                    "file_patterns": ["*pacs*.csv", "*configuration*.csv", "*config*.csv"],
+                    "options": {
+                        "delimiter": ",",
+                        "skip_rows": 0
+                    }
+                },
+                "intel_etl": {
+                    "name": "intel_etl",
+                    "enabled": True,
+                    "file_patterns": ["*.etl", "*ETL*times*.txt"],
+                    "options": {}
+                },
+                "log_file": {
+                    "name": "log_file",
+                    "enabled": True,
+                    "file_patterns": ["*.log"],
+                    "options": {}
+                },
+                "generic_csv": {
+                    "name": "generic_csv",
+                    "enabled": True,
+                    "file_patterns": ["*.csv", "*.txt"],
+                    "options": {
+                        "delimiter": ",",
+                        "skip_rows": 0
+                    }
                 }
             },
             "logging": {

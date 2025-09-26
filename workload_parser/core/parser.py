@@ -95,10 +95,18 @@ class WorkloadParser:
             from ..parsers.power_parser import PowerParser
             from ..parsers.etl_parser import ETLParser  
             from ..parsers.socwatch_parser import SocwatchParser
+            from ..parsers.intel_parsers import PacsParser, IntelEtlParser, GenericCsvParser, LogFileParser
             
+            # Register original parsers
             self.registry.register("power", PowerParser)
             self.registry.register("etl", ETLParser)
             self.registry.register("socwatch", SocwatchParser)
+            
+            # Register Intel-specific parsers
+            self.registry.register("pacs", PacsParser)
+            self.registry.register("intel_etl", IntelEtlParser)
+            self.registry.register("log_file", LogFileParser)
+            self.registry.register("generic_csv", GenericCsvParser)  # This should be last as fallback
             
         except ImportError as e:
             self.logger.warning(f"Some default parsers could not be loaded: {e}")
