@@ -157,3 +157,13 @@ tmp/
 *.xlsx
 *.xls
 !example_data/*.csv
+
+# Generated reports and temporary files
+baseline_analysis_*.xlsx
+*_parsed_summary.json
+~$*.xlsx
+*.tmp
+
+# Test outputs
+test_results/*.json
+test_results/*.xlsx
