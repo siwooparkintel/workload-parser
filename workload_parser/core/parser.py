@@ -66,7 +66,8 @@ class ParserRegistry:
                 parser_config = config.get_parser_config(parser_name)
                 if parser_config:
                     # Create temporary instance to check compatibility
-                    parser_instance = self._parsers[parser_name](parser_config.options)
+                    parser_options = parser_config.get('options', {})
+                    parser_instance = self._parsers[parser_name](parser_options)
                     if parser_instance.can_parse(file_path):
                         return parser_name
         return None
@@ -92,15 +93,21 @@ class WorkloadParser:
     def _register_default_parsers(self) -> None:
         """Register default parsers."""
         try:
-            from ..parsers.power_parser import PowerParser
-            from ..parsers.etl_parser import ETLParser  
-            from ..parsers.socwatch_parser import SocwatchParser
+            # Import enhanced parsers
+            from ..parsers.power_parser import PowerParser, PowerTraceParser
+            from ..parsers.etl_parser import ETLParser, ModelOutputParser
+            from ..parsers.socwatch_parser import SocwatchParser, PCIeParser
+            from ..parsers.hobl_parser import HOBLParser
             from ..parsers.intel_parsers import PacsParser, IntelEtlParser, GenericCsvParser, LogFileParser
             
-            # Register original parsers
+            # Register enhanced parsers with old project functionality
             self.registry.register("power", PowerParser)
+            self.registry.register("power_trace", PowerTraceParser)
             self.registry.register("etl", ETLParser)
+            self.registry.register("model_output", ModelOutputParser)
             self.registry.register("socwatch", SocwatchParser)
+            self.registry.register("pcie", PCIeParser)
+            self.registry.register("hobl", HOBLParser)
             
             # Register Intel-specific parsers
             self.registry.register("pacs", PacsParser)
@@ -137,7 +144,8 @@ class WorkloadParser:
             
             # Create parser instance
             parser_class = self.registry.get_parser(parser_name)
-            parser_instance = parser_class(parser_config.options)
+            parser_options = parser_config.get('options', {})
+            parser_instance = parser_class(parser_options)
             
             # Parse the file
             self.logger.info(f"Parsing {file_path} with {parser_name} parser")

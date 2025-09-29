@@ -1,0 +1,5 @@
+[
+  {"key": "PCIe_LPM", "devices": ["NVM"], "lookup": "PCIe LPM Summary - Sampled: Approximated Residency (Percentage)"},
+  {"key": "PCIe_Active", "devices": ["NVM"], "lookup": "PCIe Link Active Summary - Sampled: Approximated Residency (Percentage)"},
+  {"key": "PCIe_LTRsnoop", "devices": ["NVM"], "lookup": "PCIe LTR Snoop Summary - Sampled: Histogram"}
+]

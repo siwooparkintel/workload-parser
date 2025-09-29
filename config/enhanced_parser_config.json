@@ -1,0 +1,155 @@
+{
+  "version": "2.0.0",
+  "description": "Enhanced Workload Parser Configuration with DAQ, Socwatch, and PCIe targets",
+  
+  "daq_targets": {
+    "P_SSD": {"name": "P_SSD", "default_value": -1, "unit": "W", "category": "power"},
+    "V_VAL_VCC_PCORE": {"name": "V_VAL_VCC_PCORE", "default_value": -1, "unit": "V", "category": "voltage"},
+    "I_VAL_VCC_PCORE": {"name": "I_VAL_VCC_PCORE", "default_value": -1, "unit": "A", "category": "current"},
+    "V_VAL_VCC_ECORE": {"name": "V_VAL_VCC_ECORE", "default_value": -1, "unit": "V", "category": "voltage"},
+    "I_VAL_VCC_ECORE": {"name": "I_VAL_VCC_ECORE", "default_value": -1, "unit": "A", "category": "current"},
+    "V_VAL_VCCSA": {"name": "V_VAL_VCCSA", "default_value": -1, "unit": "V", "category": "voltage"},
+    "I_VAL_VCCSA": {"name": "I_VAL_VCCSA", "default_value": -1, "unit": "A", "category": "current"},
+    "V_VAL_VCCGT": {"name": "V_VAL_VCCGT", "default_value": -1, "unit": "V", "category": "voltage"},
+    "I_VAL_VCCGT": {"name": "I_VAL_VCCGT", "default_value": -1, "unit": "A", "category": "current"},
+    "P_VCC_PCORE": {"name": "P_VCC_PCORE", "default_value": -1, "unit": "W", "category": "power"},
+    "P_VCC_ECORE": {"name": "P_VCC_ECORE", "default_value": -1, "unit": "W", "category": "power"},
+    "P_VCCSA": {"name": "P_VCCSA", "default_value": -1, "unit": "W", "category": "power"},
+    "P_VCCGT": {"name": "P_VCCGT", "default_value": -1, "unit": "W", "category": "power"},
+    "P_VCCL2": {"name": "P_VCCL2", "default_value": -1, "unit": "W", "category": "power"},
+    "P_VCC1P8": {"name": "P_VCC1P8", "default_value": -1, "unit": "W", "category": "power"},
+    "P_VCCIO": {"name": "P_VCCIO", "default_value": -1, "unit": "W", "category": "power"},
+    "P_VCCDDRIO": {"name": "P_VCCDDRIO", "default_value": -1, "unit": "W", "category": "power"},
+    "P_VNNAON": {"name": "P_VNNAON", "default_value": -1, "unit": "W", "category": "power"},
+    "P_VNNAONLV": {"name": "P_VNNAONLV", "default_value": -1, "unit": "W", "category": "power"},
+    "P_VDDQ": {"name": "P_VDDQ", "default_value": -1, "unit": "W", "category": "power"},
+    "P_VDD2H": {"name": "P_VDD2H", "default_value": -1, "unit": "W", "category": "power"},
+    "P_VDD2L": {"name": "P_VDD2L", "default_value": -1, "unit": "W", "category": "power"},
+    "P_V1P8U_MEM": {"name": "P_V1P8U_MEM", "default_value": -1, "unit": "W", "category": "power"},
+    "P_SOC+MEMORY": {"name": "P_SOC+MEMORY", "default_value": -1, "unit": "W", "category": "power"},
+    "Run Time": {"name": "Run Time", "default_value": -1, "unit": "s", "category": "time"}
+  },
+  
+  "socwatch_targets": [
+    {"key": "CPU_model", "lookup": "CPU native model", "description": "CPU model information"},
+    {"key": "PCH_SLP50", "lookup": "PCH SLP-S0 State Summary: Residency (Percentage and Time)", "description": "PCH SLP-S0 state residency"},
+    {"key": "S0ix_Substate", "lookup": "S0ix Substate Summary: Residency (Percentage and Time)", "description": "S0ix substate residency"},
+    {"key": "PKG_Cstate", "lookup": "Platform Monitoring Technology CPU Package C-States Residency Summary: Residency (Percentage and Time)", "description": "CPU package C-state residency"},
+    {"key": "Core_Cstate", "lookup": "Core C-State Summary: Residency (Percentage and Time)", "description": "Core C-state residency"},
+    {"key": "Core_Concurrency", "lookup": "CPU Core Concurrency (OS)", "description": "CPU core concurrency"},
+    {"key": "ACPI_Cstate", "lookup": "Core C-State (OS) Summary: Residency (Percentage and Time)", "description": "ACPI C-state residency"},
+    {"key": "OS_wakeups", "lookup": "Processes by Platform Busy Duration", "description": "OS wakeup events"},
+    {"key": "CPU-iGPU", "lookup": "CPU-iGPU Concurrency Summary: Residency (Percentage and Time)", "description": "CPU-iGPU concurrency"},
+    {"key": "CPU_Pavr", "lookup": "CPU P-State Average Frequency (excluding CPU idle time)", "description": "CPU P-state average frequency"},
+    {"key": "CPU_Pstate", "lookup": "CPU P-State/Frequency Summary: Residency (Percentage and Time)", "description": "CPU P-state residency"},
+    {"key": "RC_Cstate", "lookup": "Integrated Graphics C-State  Summary: Residency (Percentage and Time)", "description": "Graphics C-state residency"},
+    {"key": "DDR_BW", "lookup": "DDR Bandwidth Requests by Component Summary: Average Rate and Total", "description": "DDR bandwidth"},
+    {"key": "IO_BW", "lookup": "IO Bandwidth Summary: Average Rate and Total", "description": "IO bandwidth"},
+    {"key": "VC1_BW", "lookup": "Display VC1 Bandwidth Summary: Average Rate and Total", "description": "Display VC1 bandwidth"},
+    {"key": "NPU_BW", "lookup": "Neural Processing Unit (NPU) to Memory Bandwidth Summary: Average Rate and Total", "description": "NPU bandwidth"},
+    {"key": "Media_BW", "lookup": "Media to Network on Chip (NoC) Bandwidth Summary: Average Rate and Total", "description": "Media bandwidth"},
+    {"key": "IPU_BW", "lookup": "Image Processing Unit (IPU) to Network on Chip (NoC) Bandwidth Summary: Average Rate and Total", "description": "IPU bandwidth"},
+    {"key": "CCE_BW", "lookup": "CCE to Network on Chip (NoC) Bandwidth Summary: Average Rate and Total", "description": "CCE bandwidth"},
+    {"key": "GT_BW", "lookup": "Chip GT Bandwidth Summary: Average Rate and Total", "description": "GT bandwidth"},
+    {"key": "D2D_BW", "lookup": "Chip Die to Die Bandwidth Summary: Average Rate and Total", "description": "Die-to-die bandwidth"},
+    {"key": "CPU_temp", "lookup": "Temperature Metrics Summary - Sampled: Min/Max/Avg", "description": "CPU temperature"},
+    {"key": "SoC_temp", "lookup": "SoC Domain Temperatures Summary - Sampled: Min/Max/Avg", "description": "SoC temperature"},
+    {"key": "NPU_Dstate", "lookup": "Neural Processing Unit (NPU) D-State Residency Summary: Residency (Percentage and Time)", "description": "NPU D-state residency"},
+    {"key": "PMC+SLP_S0", "lookup": "PCH Active State (as percentage of PMC Active plus SLP_S0 Time) Summary: Residency (Percentage)", "description": "PCH active state"},
+    {"key": "DC_count", "lookup": "Dynamic Display State Enabling", "description": "Dynamic display state"},
+    {"key": "Media_Cstate", "lookup": "Media C-State Residency Summary: Residency (Percentage and Time)", "description": "Media C-state residency"},
+    {"key": "NPU_Pstate", "lookup": "Neural Processing Unit (NPU) P-State Summary - Sampled: Approximated Residency (Percentage)", "buckets": ["0", "1900", "1901-2900", "2901-3899", "3900"], "description": "NPU P-state with bucketing"},
+    {"key": "MEMSS_Pstate", "lookup": "Memory Subsystem (MEMSS) P-State Summary - Sampled: Approximated Residency (Percentage)", "description": "Memory subsystem P-state"},
+    {"key": "NoC_Pstate", "lookup": "Network on Chip (NoC) P-State Summary - Sampled: Approximated Residency (Percentage)", "buckets": ["400", "401-1049", "1050"], "description": "NoC P-state with bucketing"},
+    {"key": "iGFX_Pstate", "lookup": "Integrated Graphics P-State/Frequency Summary - Sampled: Approximated Residency (Percentage)", "buckets": ["0", "400", "401-1799", "1800-2049", "2050"], "description": "iGFX P-state with bucketing"}
+  ],
+  
+  "pcie_targets": [
+    {"key": "PCIe_LPM", "devices": ["NVM"], "lookup": "PCIe LPM Summary - Sampled: Approximated Residency (Percentage)", "description": "PCIe Low Power Mode"},
+    {"key": "PCIe_Active", "devices": ["NVM"], "lookup": "PCIe Link Active Summary - Sampled: Approximated Residency (Percentage)", "description": "PCIe Link Active"},
+    {"key": "PCIe_LTRsnoop", "devices": ["NVM"], "lookup": "PCIe LTR Snoop Summary - Sampled: Histogram", "description": "PCIe LTR Snoop"}
+  ],
+  
+  "parsers": {
+    "power": {
+      "enabled": true,
+      "priority": 10,
+      "file_patterns": ["*power*summary*.csv", "*pacs-summary*.csv", "*daq*.csv"],
+      "options": {
+        "average_column": "Average",
+        "delimiter": ",",
+        "encoding": "utf-8-sig"
+      }
+    },
+    "power_trace": {
+      "enabled": true,
+      "priority": 15,
+      "file_patterns": ["*pacs-traces*.csv", "*trace*.csv", "*_sr.csv"],
+      "options": {
+        "sample_rate": 1000,
+        "max_samples": 100000
+      }
+    },
+    "etl": {
+      "enabled": true,
+      "priority": 20,
+      "file_patterns": ["*.etl", "*etl*.txt", "*_output.txt"],
+      "options": {
+        "max_events": 10000,
+        "encoding": "utf-8"
+      }
+    },
+    "model_output": {
+      "enabled": true,
+      "priority": 25,
+      "file_patterns": ["*_qdq_proxy_*", "*model*output*", "*inference*output*"],
+      "options": {}
+    },
+    "socwatch": {
+      "enabled": true,
+      "priority": 30,
+      "file_patterns": ["*socwatch*.csv", "*.csv"],
+      "options": {
+        "encoding": "utf-8-sig"
+      }
+    },
+    "pcie": {
+      "enabled": true,
+      "priority": 35,
+      "file_patterns": ["*socwatch*.csv"],
+      "options": {}
+    },
+    "hobl": {
+      "enabled": false,
+      "priority": 5,
+      "file_patterns": [".PASS", ".FAIL"],
+      "options": {}
+    }
+  },
+  
+  "output": {
+    "format": "excel",
+    "filename_template": "{input_name}_allPower_v{version}.xlsx",
+    "include_raw_data": false,
+    "excel_options": {
+      "multiple_sheets": true,
+      "summary_sheet": true,
+      "formatting": true
+    }
+  },
+  
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file_logging": false,
+    "log_file": "workload_parser.log"
+  },
+  
+  "processing": {
+    "hobl_enabled": false,
+    "folder_structure_detection": true,
+    "power_picking_strategy": "MED",
+    "inference_only_mode": false,
+    "sort_similar_data": false
+  }
+}

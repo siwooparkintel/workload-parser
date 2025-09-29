@@ -1,3 +1,9 @@
+# example data file 
+.data/
+
+# old reference code
+.old/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

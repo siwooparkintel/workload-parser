@@ -1,10 +1,12 @@
 """
-Power data parser implementation.
+Enhanced Power Parser with DAQ target support.
+Based on the original power_summary_parser.py but with modern architecture.
 """
 
 import re
+import csv
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import pandas as pd
 
 from ..core.parser import BaseParser
@@ -12,13 +14,15 @@ from ..core.exceptions import ParsingError
 
 
 class PowerParser(BaseParser):
-    """Parser for power consumption data files."""
+    """Enhanced parser for power consumption data files with DAQ target support."""
     
     def __init__(self, config: Dict[str, Any] = None):
         super().__init__(config)
         self.delimiter = self.config.get('delimiter', ',')
         self.skip_rows = self.config.get('skip_rows', 0)
         self.encoding = self.config.get('encoding', 'utf-8')
+        self.daq_targets = self.config.get('daq_targets', {})
+        self.average_column = self.config.get('average_column', 'Average')
         
     def can_parse(self, file_path: Path) -> bool:
         """Check if this parser can handle the given file."""
@@ -26,110 +30,210 @@ class PowerParser(BaseParser):
         if file_path.suffix.lower() not in ['.csv', '.txt']:
             return False
         
-        # Check filename patterns
+        # Check filename patterns (from old project)
         filename_lower = file_path.name.lower()
         power_patterns = [
+            r'.*power.*summary.*',
+            r'.*pacs-summary.*',
             r'.*power.*',
             r'.*pwr.*',
             r'.*energy.*',
-            r'.*watt.*'
+            r'.*watt.*',
+            r'.*daq.*'
         ]
         
         return any(re.match(pattern, filename_lower) for pattern in power_patterns)
     
     def parse(self, file_path: Path) -> Dict[str, Any]:
-        """Parse power data file."""
+        """Parse power data file with DAQ target mapping."""
         try:
-            # Read the CSV file
+            self.logger.info(f"Parsing power file: {file_path}")
+            
+            # Read the CSV file with UTF-8 BOM handling (from old project)
             df = pd.read_csv(
                 file_path,
                 delimiter=self.delimiter,
                 skiprows=self.skip_rows,
-                encoding=self.encoding,
+                encoding='utf-8-sig',  # Handle BOM
                 low_memory=False
             )
             
-            # Basic validation
             if df.empty:
-                raise ParsingError(f"Empty data file: {file_path}")
+                raise ParsingError(f"Empty CSV file: {file_path}")
             
-            # Clean column names
-            df.columns = df.columns.str.strip()
+            # Validate required columns
+            if self.average_column not in df.columns:
+                raise ParsingError(f"Required column '{self.average_column}' not found in {file_path}")
             
-            # Identify power-related columns
-            power_columns = self._identify_power_columns(df.columns)
+            # Extract power data based on DAQ targets (from old project logic)
+            power_data = self._extract_power_data(df)
             
-            # Extract summary statistics
-            summary = self._calculate_summary_stats(df, power_columns)
+            # Calculate derived metrics
+            derived_metrics = self._calculate_derived_metrics(power_data)
+            power_data.update(derived_metrics)
             
-            # Prepare result
+            # Build result
             result = {
                 'data_type': 'power',
-                'columns': list(df.columns),
-                'row_count': len(df),
-                'power_columns': power_columns,
-                'summary_stats': summary,
-                'raw_data': df.to_dict('records')  # Consider limiting size for large files
+                'parser': 'PowerParser',
+                'power_data': power_data,
+                'file_info': {
+                    'path': str(file_path),
+                    'total_rows': len(df),
+                    'columns': list(df.columns)
+                },
+                'metadata': {
+                    'daq_targets_found': len([k for k in self.daq_targets.keys() if k in power_data]),
+                    'daq_targets_total': len(self.daq_targets)
+                }
             }
             
-            self.logger.info(f"Parsed power data: {len(df)} rows, {len(power_columns)} power columns")
+            self.logger.info(f"Successfully parsed power data: {len(power_data)} metrics extracted")
             return result
             
         except Exception as e:
-            raise ParsingError(f"Failed to parse power data from {file_path}: {str(e)}")
+            error_msg = f"Error parsing power file {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            raise ParsingError(error_msg) from e
     
-    def _identify_power_columns(self, columns: List[str]) -> List[str]:
-        """Identify columns that contain power data."""
-        power_keywords = [
-            'power', 'pwr', 'watt', 'w', 'energy', 'current', 'voltage', 
-            'amp', 'milliwatt', 'mw', 'kilowatt', 'kw'
-        ]
+    def _extract_power_data(self, df) -> Dict[str, float]:
+        """Extract power data based on DAQ targets in configuration order."""
+        from collections import OrderedDict
+        power_data = OrderedDict()
         
-        power_columns = []
-        for col in columns:
-            col_lower = col.lower().replace('_', '').replace('-', '').replace(' ', '')
-            if any(keyword in col_lower for keyword in power_keywords):
-                power_columns.append(col)
+        # Convert DataFrame to dictionary for easier searching (similar to old project)
+        rows_dict = {}
+        for _, row in df.iterrows():
+            rail_name = str(row.iloc[0]).strip()  # First column is rail name
+            rows_dict[rail_name] = row
         
-        return power_columns
+        # Extract data for each DAQ target in configuration order
+        p_soc = 0
+        for target_rail in self.daq_targets.keys():  # Preserve order from config
+            if target_rail in rows_dict:
+                try:
+                    value = float(rows_dict[target_rail][self.average_column])
+                    power_data[target_rail] = value
+                    
+                    # Track SOC power for energy calculation (from old project)
+                    if 'P_SOC' in target_rail or 'P_MCP' in target_rail:
+                        p_soc = value
+                        
+                except (ValueError, KeyError) as e:
+                    self.logger.warning(f"Could not extract value for {target_rail}: {e}")
+                    power_data[target_rail] = -1
+            else:
+                self.logger.debug(f"DAQ target not found in data: {target_rail}")
+                power_data[target_rail] = -1
+        
+        # Store SOC power for energy calculations
+        if p_soc > 0:
+            power_data['_soc_power'] = p_soc
+            
+        return power_data
     
-    def _calculate_summary_stats(self, df: pd.DataFrame, power_columns: List[str]) -> Dict[str, Any]:
-        """Calculate summary statistics for power data."""
-        summary = {}
+    def _calculate_derived_metrics(self, power_data: Dict[str, float]) -> Dict[str, float]:
+        """Calculate derived metrics like energy (from old project logic)."""
+        derived = {}
         
-        for col in power_columns:
-            if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
-                col_data = df[col].dropna()
-                if not col_data.empty:
-                    summary[col] = {
-                        'count': len(col_data),
-                        'mean': float(col_data.mean()),
-                        'min': float(col_data.min()),
-                        'max': float(col_data.max()),
-                        'std': float(col_data.std()) if len(col_data) > 1 else 0.0,
-                        'total': float(col_data.sum())
-                    }
+        # Calculate total energy if SOC power and runtime are available
+        soc_power = power_data.get('_soc_power', 0)
+        runtime = power_data.get('Run Time', 0)
         
-        return summary
+        if soc_power > 0 and runtime > 0:
+            # Energy in Joules (Power in Watts * Time in seconds)
+            derived['Energy (J)'] = soc_power * runtime
+            self.logger.debug(f"Calculated energy: {derived['Energy (J)']} J")
+        
+        # Calculate P_SOC+MEMORY if individual components are available
+        soc_components = ['P_VCC_PCORE', 'P_VCC_ECORE', 'P_VCCSA', 'P_VCCGT']
+        memory_components = ['P_VDDQ', 'P_VDD2H', 'P_VDD2L']
+        
+        soc_total = sum(power_data.get(comp, 0) for comp in soc_components if power_data.get(comp, -1) > 0)
+        memory_total = sum(power_data.get(comp, 0) for comp in memory_components if power_data.get(comp, -1) > 0)
+        
+        if soc_total > 0 and memory_total > 0:
+            derived['P_SOC+MEMORY'] = soc_total + memory_total
+        
+        return derived
     
     def validate_data(self, data: Dict[str, Any]) -> bool:
         """Validate parsed power data."""
-        required_keys = ['data_type', 'columns', 'row_count']
-        
-        # Check required keys
-        if not all(key in data for key in required_keys):
+        if not super().validate_data(data):
             return False
         
-        # Check data type
-        if data['data_type'] != 'power':
+        power_data = data.get('power_data', {})
+        if not power_data:
             return False
         
-        # Check if we have some data
-        if data['row_count'] <= 0:
-            return False
+        # Check if at least some DAQ targets were found
+        valid_measurements = sum(1 for v in power_data.values() if isinstance(v, (int, float)) and v >= 0)
         
-        # Check if we found power columns
-        if not data.get('power_columns'):
-            self.logger.warning("No power columns identified in the data")
+        return valid_measurements > 0
+
+
+class PowerTraceParser(BaseParser):
+    """Parser for power trace files (detailed time-series data)."""
+    
+    def __init__(self, config: Dict[str, Any] = None):
+        super().__init__(config)
+        self.sample_rate = self.config.get('sample_rate', 1000)  # Hz
+        self.max_samples = self.config.get('max_samples', 100000)  # Limit for memory
+    
+    def can_parse(self, file_path: Path) -> bool:
+        """Check if this parser can handle trace files."""
+        filename_lower = file_path.name.lower()
+        trace_patterns = [
+            r'.*pacs-traces.*',
+            r'.*trace.*\.csv',
+            r'.*_sr\.csv',  # Sample rate files
+        ]
         
-        return True
+        return any(re.match(pattern, filename_lower) for pattern in trace_patterns)
+    
+    def parse(self, file_path: Path) -> Dict[str, Any]:
+        """Parse power trace file."""
+        try:
+            self.logger.info(f"Parsing power trace file: {file_path}")
+            
+            # Read trace data
+            df = pd.read_csv(file_path, encoding='utf-8-sig', low_memory=False)
+            
+            if df.empty:
+                raise ParsingError(f"Empty trace file: {file_path}")
+            
+            # Limit samples for memory efficiency
+            if len(df) > self.max_samples:
+                self.logger.warning(f"Trace file has {len(df)} samples, limiting to {self.max_samples}")
+                df = df.head(self.max_samples)
+            
+            # Calculate basic statistics for each column
+            trace_stats = {}
+            for col in df.columns:
+                if df[col].dtype in ['float64', 'int64']:
+                    trace_stats[col] = {
+                        'mean': float(df[col].mean()),
+                        'min': float(df[col].min()),
+                        'max': float(df[col].max()),
+                        'std': float(df[col].std())
+                    }
+            
+            result = {
+                'data_type': 'power_trace',
+                'parser': 'PowerTraceParser',
+                'trace_stats': trace_stats,
+                'file_info': {
+                    'path': str(file_path),
+                    'total_samples': len(df),
+                    'columns': list(df.columns),
+                    'duration_estimate': len(df) / self.sample_rate if self.sample_rate > 0 else None
+                }
+            }
+            
+            self.logger.info(f"Successfully parsed trace data: {len(df)} samples, {len(trace_stats)} metrics")
+            return result
+            
+        except Exception as e:
+            error_msg = f"Error parsing trace file {file_path}: {str(e)}"
+            self.logger.error(error_msg)
+            raise ParsingError(error_msg) from e

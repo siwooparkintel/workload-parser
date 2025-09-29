@@ -18,18 +18,30 @@ except ImportError:
 def setup_logging(config) -> None:
     """Setup logging configuration."""
     
+    # Handle both dict and object configurations
+    if isinstance(config, dict):
+        level = config.get('level', 'INFO')
+        format_str = config.get('format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        console = config.get('console', True)
+        file_path = config.get('file_path')
+    else:
+        level = getattr(config, 'level', 'INFO')
+        format_str = getattr(config, 'format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        console = getattr(config, 'console', True)
+        file_path = getattr(config, 'file_path', None)
+    
     # Create logger
     logger = logging.getLogger()
-    logger.setLevel(getattr(logging, config.level.upper(), logging.INFO))
+    logger.setLevel(getattr(logging, level.upper(), logging.INFO))
     
     # Clear existing handlers
     logger.handlers.clear()
     
     # Create formatter
-    formatter = logging.Formatter(config.format)
+    formatter = logging.Formatter(format_str)
     
     # Setup console handler
-    if config.console:
+    if console:
         if RICH_AVAILABLE:
             console_handler = RichHandler(
                 rich_tracebacks=True,
@@ -40,17 +52,17 @@ def setup_logging(config) -> None:
             console_handler = logging.StreamHandler(sys.stdout)
             console_handler.setFormatter(formatter)
         
-        console_handler.setLevel(getattr(logging, config.level.upper(), logging.INFO))
+        console_handler.setLevel(getattr(logging, level.upper(), logging.INFO))
         logger.addHandler(console_handler)
     
     # Setup file handler if specified
-    if config.file_path:
-        file_path = Path(config.file_path)
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+    if file_path:
+        file_path_obj = Path(file_path)
+        file_path_obj.parent.mkdir(parents=True, exist_ok=True)
         
-        file_handler = logging.FileHandler(file_path, encoding='utf-8')
+        file_handler = logging.FileHandler(file_path_obj, encoding='utf-8')
         file_handler.setFormatter(formatter)
-        file_handler.setLevel(getattr(logging, config.level.upper(), logging.INFO))
+        file_handler.setLevel(getattr(logging, level.upper(), logging.INFO))
         logger.addHandler(file_handler)
 
 
