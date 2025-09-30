@@ -202,22 +202,14 @@ def generate_excel_report(results, folders_info, start_time):
     other_metrics = [metric for metric in all_metrics if metric not in daq_targets_order]
     sorted_metrics = daq_metrics + other_metrics
     
-    # Create vertical format data (metrics as rows, folders as columns)
-    data_rows = []
+    # Create horizontal format DataFrame (folders as rows, metrics as columns)
+    horizontal_data = []
     
-    # Header rows
-    data_label_row = ['Data label'] + ['WW2533.2_CataV3ITCCAUHX2_DCBAL'] * len(sorted_folders)
-    condition_row = ['Condition'] + ['Baseline'] * len(sorted_folders)
-    
-    data_rows.append(data_label_row)
-    data_rows.append(condition_row)
-    
-    # Add each metric as a row
-    for metric in sorted_metrics:
-        metric_row = [metric]  # First column is metric name
+    for folder_name in sorted_folders:
+        row_data = {'Folder': folder_name}
         
-        # Add value for each folder
-        for folder_name in sorted_folders:
+        # Add all metrics as columns
+        for metric in sorted_metrics:
             value = folder_data[folder_name].get(metric, '')
             # Format numeric values
             if isinstance(value, (int, float)) and value != '':
@@ -225,17 +217,54 @@ def generate_excel_report(results, folders_info, start_time):
                     value = float(value)
                 except:
                     pass
-            metric_row.append(value)
+            row_data[metric] = value
         
-        data_rows.append(metric_row)
+        horizontal_data.append(row_data)
     
-    # Create DataFrame
-    columns = ['Data label'] + sorted_folders
-    df = pd.DataFrame(data_rows, columns=columns)
+    # Create horizontal DataFrame
+    df_horizontal = pd.DataFrame(horizontal_data)
     
-    # Generate timestamped filename
+    # Create vertical format using transpose for Excel output
+    # First, set Folder as index for proper transposition
+    df_horizontal_indexed = df_horizontal.set_index('Folder')
+    
+    # Transpose to get metrics as rows and folders as columns
+    df_vertical = df_horizontal_indexed.transpose()
+    
+    # Add header rows for the vertical format
+    # Create header rows as lists to match the vertical structure
+    header_rows = []
+    
+    # Data label row
+    data_label_row = ['Data label'] + ['WW2533.2_CataV3ITCCAUHX2_DCBAL'] * len(sorted_folders)
+    header_rows.append(data_label_row)
+    
+    # Condition row
+    condition_row = ['Condition'] + ['Baseline'] * len(sorted_folders)
+    header_rows.append(condition_row)
+    
+    # Create column names: 'Data label' + folder names
+    column_names = ['Data label'] + list(df_vertical.columns)
+    
+    # Convert transposed DataFrame to list of lists for easier concatenation
+    metric_rows = []
+    for index, row in df_vertical.iterrows():
+        metric_row = [index] + list(row.values)
+        metric_rows.append(metric_row)
+    
+    # Combine all rows
+    all_rows = header_rows + metric_rows
+    
+    # Create final DataFrame
+    df = pd.DataFrame(all_rows, columns=column_names)
+    
+    # Create .testdata directory if it doesn't exist
+    testdata_dir = Path('.testdata')
+    testdata_dir.mkdir(exist_ok=True)
+    
+    # Generate timestamped filename in .testdata folder
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    excel_filename = f'baseline_analysis_vertical_{timestamp}.xlsx'
+    excel_filename = testdata_dir / f'baseline_analysis_vertical_{timestamp}.xlsx'
     
     # Write Excel file
     with pd.ExcelWriter(excel_filename, engine='openpyxl') as writer:

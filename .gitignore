@@ -1,4 +1,8 @@
 # example data file 
+.testdata/
+
+
+# example data file 
 .data/
 
 # old reference code
