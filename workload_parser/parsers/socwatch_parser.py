@@ -11,6 +11,219 @@ from ..core.parser import BaseParser
 from ..core.exceptions import ParsingError
 
 
+def cpu_model_table(table_data: List[List[str]]) -> Dict[str, Any]:
+    """Parse CPU model table."""
+    data = {}
+    for line in table_data:
+        if len(line) > 0 and '=' in line[0]:
+            items = line[0].split("=")
+            if len(items) > 1:
+                key = items[0].split("/")[1].strip() if "/" in items[0] else items[0].strip()
+                data[key] = items[-1].strip()
+    return data
+
+
+def one_line_colon_separator(table_data: List[List[str]]) -> Dict[str, Any]:
+    """Parse single line colon-separated table."""
+    data = {}
+    for line in table_data:
+        if len(line) > 0 and ':' in line[0]:
+            items = line[0].split(":")
+            if len(items) >= 2:
+                key = items[0].strip()
+                value = items[-1].strip()
+                # Try to convert to number if possible
+                try:
+                    if '.' in value:
+                        data[key] = float(value)
+                    else:
+                        data[key] = int(value)
+                except ValueError:
+                    data[key] = value
+    return data
+
+
+def temp_avr_table(table_data: List[List[str]], label: str) -> Dict[str, Any]:
+    """Parse temperature average table."""
+    data = {}
+    for index, line in enumerate(table_data):
+        if len(line) >= 5:
+            if index == 0:
+                data[label] = line[4]
+            else:
+                key = line[0].split("/")[-1] if "/" in line[0] else line[0]
+                try:
+                    data[key] = round(float(line[4]), 2)
+                except (ValueError, IndexError):
+                    data[key] = line[4] if len(line) > 4 else ''
+    return data
+
+
+def bw_total_avr(table_data: List[List[str]], label: str) -> Dict[str, Any]:
+    """Parse bandwidth total average table."""
+    if table_data and len(table_data) > 0:
+        last_row = table_data[-1]
+        if len(last_row) >= 3:
+            try:
+                value = round(float(last_row[2]), 2)
+            except ValueError:
+                value = last_row[2]
+            return {f"{label}_AvrRt(MB/s)": value}
+    return {f"{label}_AvrRt(MB/s)": 0}
+
+
+def core_residency_table(table_data: List[List[str]]) -> Dict[str, Any]:
+    """Parse core residency table."""
+    data = {}
+    if len(table_data) >= 2:
+        header_row = table_data[0]
+        data_row = table_data[1]
+        
+        # First column header and data
+        if len(header_row) > 0 and len(data_row) > 0:
+            data[header_row[0]] = data_row[0]
+        
+        # Process remaining columns
+        for index in range(1, len(header_row)):
+            if index >= len(data_row):
+                break
+            key = header_row[index].split("/")[-1] if "/" in header_row[index] else header_row[index]
+            if "(%)" not in key:
+                break
+            try:
+                data[key] = round(float(data_row[index]), 2)
+            except ValueError:
+                data[key] = data_row[index]
+    return data
+
+
+def os_wakeups_table(table_data: List[List[str]]) -> Dict[str, Any]:
+    """Parse OS wakeups table."""
+    data = {}
+    for idx, line in enumerate(table_data):
+        if len(line) >= 3:
+            if idx == 0:
+                key = "OS_wakeups"
+                value = f"{line[1].split(' ')[0]} ({' '.join(line[2].split(' ')[:-1])})"
+            elif idx == 1:
+                key = "Rank"
+                value = f"{line[1].split(' ')[0]} ({line[2]})"
+            else:
+                key = line[0] if line[0] else f"Entry_{idx}"
+                value = f"{line[1].split(' ')[0]} ({line[2]})"
+            data[key] = value
+    return data
+
+
+def core_freq_avr_table(table_data: List[List[str]], key_idx: int = 0, value_idx: int = 1) -> Dict[str, Any]:
+    """Parse core frequency average table."""
+    data = {}
+    if len(table_data) > 0 and len(table_data[0]) > max(key_idx, value_idx):
+        # Header row
+        data[table_data[0][key_idx]] = table_data[0][value_idx]
+        
+        # Data rows
+        for index in range(1, len(table_data)):
+            line = table_data[index]
+            if len(line) > max(key_idx, value_idx):
+                key = line[key_idx].split("/")[2] if "/" in line[key_idx] and len(line[key_idx].split("/")) > 2 else line[key_idx]
+                value = line[value_idx]
+                try:
+                    data[key] = int(float(value))
+                except ValueError:
+                    data[key] = value
+    return data
+
+
+def default_residency_table(table_data: List[List[str]], key_idx: int = 0, value_idx: int = 1) -> Dict[str, Any]:
+    """Parse default residency table format."""
+    data = {}
+    for idx, line in enumerate(table_data):
+        if len(line) > max(key_idx, value_idx):
+            key = line[key_idx]
+            # Handle P-state tables by removing decimal part
+            if "_Pstate" in key and idx > 0 and "." in key:
+                key = key.split(".")[0]
+            
+            value = line[value_idx]
+            try:
+                data[key] = round(float(value), 2)
+            except ValueError:
+                data[key] = value
+    return data
+
+
+def bucketized_table(table_data: List[List[str]], key_idx: int = 0, value_idx: int = 1, buckets: List[str] = None) -> Dict[str, Any]:
+    """Parse bucketized table with frequency ranges."""
+    data = {}
+    bucketized_data = {bucket: 0 for bucket in (buckets or [])}
+    
+    for idx, line in enumerate(table_data):
+        if len(line) > max(key_idx, value_idx):
+            key = line[key_idx]
+            if "_Pstate" in str(key) and idx > 0 and "." in str(key):
+                key = key.split(".")[0]
+            
+            value = line[value_idx]
+            data[key] = value
+            
+            # Bucketize if buckets are provided and this is not header row
+            if idx > 0 and buckets:
+                for bucket in bucketized_data:
+                    try:
+                        if "-" in bucket:
+                            # Range bucket
+                            ranges = bucket.split("-")
+                            if len(ranges) == 2:
+                                min_val = int(ranges[0])
+                                max_val = int(ranges[1])
+                                if min_val <= int(key) <= max_val:
+                                    bucketized_data[bucket] += float(value)
+                        elif bucket == key:
+                            # Exact match
+                            bucketized_data[bucket] = float(value)
+                    except (ValueError, TypeError):
+                        continue
+    
+    # Combine original data with bucketized data
+    if buckets:
+        # Add header first, then bucketized data
+        first_item = next(iter(data.items())) if data else ("Header", "Value")
+        extended = {first_item[0]: first_item[1]}
+        extended.update(bucketized_data)
+        return extended
+    
+    return data
+
+
+def socwatch_table_type_checker(table_data: List[List[str]], label: str, core_type: Dict[str, str] = None, 
+                                soc_target: Dict[str, Any] = None, tdic: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Classify and parse SocWatch tables based on their labels using specialized parsing functions."""
+    if label == 'CPU_model':
+        return cpu_model_table(table_data)
+    elif label in ['Core_Cstate', 'ACPI_Cstate']:
+        return core_residency_table(table_data)
+    elif label == 'OS_wakeups':
+        return os_wakeups_table(table_data)
+    elif label == 'CPU_Pavr':
+        return core_freq_avr_table(table_data, 0, 1)
+    elif label == 'CPU_Pstate':
+        # Note: More complex parsing for per-core vs combined would need core_type parameter
+        return default_residency_table(table_data, 0, 1)
+    elif label == 'DC_count':
+        return one_line_colon_separator(table_data)
+    elif label in ['DDR_BW', 'IO_BW', 'VC1_BW', 'NPU_BW', 'Media_BW', 'IPU_BW', 'CCE_BW', 'GT_BW', 'D2D_BW']:
+        return bw_total_avr(table_data, label)
+    elif label in ['CPU_temp', 'SoC_temp']:
+        return temp_avr_table(table_data, label)
+    elif label == 'PMC+SLP_S0':
+        return default_residency_table(table_data, 0, 2)
+    elif soc_target and 'buckets' in soc_target:
+        return bucketized_table(table_data, 0, 1, soc_target['buckets'])
+    else:
+        return default_residency_table(table_data, 0, 1)
+
+
 class SocwatchParser(BaseParser):
     """Parser for SocWatch monitoring data files."""
     
@@ -245,51 +458,14 @@ class SocwatchParser(BaseParser):
         ]
     
     def _extract_table_data(self, lines: List[str], lookup_idx: int, target: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract table data after finding the lookup text, integrating headers into data."""
-        table_data = {}
+        """Extract table data after finding the lookup text using specialized table classification."""
         target_key = target['key']
         
         # Start from the line after the lookup text
         current_idx = lookup_idx + 1
-        headers_captured = False
-        parsed_headers = []
         
-        # Look for header lines and capture them
-        while current_idx < len(lines):
-            line = lines[current_idx].strip()
-            if not line:  # Empty line - no table data found
-                return table_data
-            
-            # Check if this is a separator line (only dashes)
-            if line.startswith('---') or line.replace('-', '').replace(' ', '') == '':
-                current_idx += 1
-                continue
-            
-            # Check if this is a header line (contains column descriptors or units)
-            if (not headers_captured and 
-                (('(' in line and ')' in line) or  # Contains units in parentheses
-                 'Percentage' in line or 'Residency' in line or 'Time' in line or
-                 'Average' in line or 'Total' in line or 'Min/Max/Avg' in line or
-                 'Temperature' in line or 'Duration' in line or 'Count' in line or
-                 'Name' in line or 'State' in line or 'Component' in line)):
-                # Extract and store headers for later use
-                parsed_headers = self._parse_header_line(line)
-                headers_captured = True
-                current_idx += 1
-                continue
-            else:
-                # This should be the beginning of actual data
-                break
-        
-        # Add header information to data if we captured headers
-        if parsed_headers and len(parsed_headers) >= 2:
-            header_key = parsed_headers[0]['name']  # First header as key
-            header_value = parsed_headers[1]['name']  # Second header name
-            if parsed_headers[1]['unit']:  # Add unit if present
-                header_value += f" ({parsed_headers[1]['unit']})"
-            table_data[header_key] = header_value
-        
-        # Extract data rows until empty line
+        # Collect raw table lines until empty line or end of file
+        raw_table_lines = []
         while current_idx < len(lines):
             line = lines[current_idx].strip()
             
@@ -297,19 +473,53 @@ class SocwatchParser(BaseParser):
             if not line:
                 break
             
-            # Parse the data line: first column is label, second column is value
-            parts = [part.strip() for part in line.split(',') if part.strip()]
-            if len(parts) >= 2:
-                data_label = parts[0].strip('"')  # Remove quotes if present
-                data_value = parts[1].strip('"')  # Second column is the target data
-                
-                # Clean up the data
-                if data_label and data_value:
-                    table_data[data_label] = data_value
+            # Skip separator lines (only dashes)
+            if line.startswith('---') or line.replace('-', '').replace(' ', '') == '':
+                current_idx += 1
+                continue
+            
+            # Add line to raw table data
+            # Split by comma and clean up each part
+            parts = [part.strip().strip('"') for part in line.split(',') if part.strip()]
+            if parts:  # Only add non-empty rows
+                raw_table_lines.append(parts)
             
             current_idx += 1
         
-        return table_data
+        # If no table data found, return empty dict
+        if not raw_table_lines:
+            return {}
+        
+        # Use the table classification system to parse the raw data
+        try:
+            # Get any additional context needed for specialized parsing
+            core_type = getattr(self, '_core_type_cache', None)  # Could be set from CPU_model table
+            soc_target = target  # The target config contains bucket info if needed
+            tdic = getattr(self, '_parsing_context', {})  # Additional parsing context
+            
+            # Apply specialized parsing based on table type
+            parsed_data = socwatch_table_type_checker(
+                raw_table_lines, 
+                target_key, 
+                core_type, 
+                soc_target, 
+                tdic
+            )
+            
+            # Cache core type information if this is a CPU_model table
+            if target_key == 'CPU_model' and parsed_data:
+                self._core_type_cache = parsed_data
+            
+            return parsed_data
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to parse {target_key} table with specialized parser, falling back to generic: {e}")
+            # Fallback to simple key-value parsing
+            fallback_data = {}
+            for row in raw_table_lines:
+                if len(row) >= 2:
+                    fallback_data[row[0]] = row[1]
+            return fallback_data
     
     def _parse_header_line(self, header_line: str) -> List[Dict[str, str]]:
         """Parse header line to extract column names and units."""
