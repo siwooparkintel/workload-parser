@@ -127,7 +127,7 @@ class SocwatchParser(BaseParser):
             # Extract table data starting after the lookup line
             table_data = self._extract_table_data(lines, table_start_idx, target)
             if table_data:
-                # Store as dictionary with metadata
+                # Store as dictionary with metadata and data (headers integrated into data)
                 table_dict = {
                     'table_key': target_key,
                     'table_info': target,
@@ -245,28 +245,49 @@ class SocwatchParser(BaseParser):
         ]
     
     def _extract_table_data(self, lines: List[str], lookup_idx: int, target: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract table data after finding the lookup text, skipping headers and separators."""
+        """Extract table data after finding the lookup text, integrating headers into data."""
         table_data = {}
         target_key = target['key']
         
         # Start from the line after the lookup text
         current_idx = lookup_idx + 1
+        headers_captured = False
+        parsed_headers = []
         
-        # Skip any header lines and separator lines (lines with only dashes)
+        # Look for header lines and capture them
         while current_idx < len(lines):
             line = lines[current_idx].strip()
             if not line:  # Empty line - no table data found
-                return {}
+                return table_data
             
-            # Skip header lines (typically contain column names) and separator lines
-            if (line.startswith('---') or line.replace('-', '').replace(' ', '') == '' or 
-                'Percentage' in line or 'Residency' in line or 'Time' in line or
-                'Average' in line or 'Total' in line or 'Min/Max/Avg' in line):
+            # Check if this is a separator line (only dashes)
+            if line.startswith('---') or line.replace('-', '').replace(' ', '') == '':
+                current_idx += 1
+                continue
+            
+            # Check if this is a header line (contains column descriptors or units)
+            if (not headers_captured and 
+                (('(' in line and ')' in line) or  # Contains units in parentheses
+                 'Percentage' in line or 'Residency' in line or 'Time' in line or
+                 'Average' in line or 'Total' in line or 'Min/Max/Avg' in line or
+                 'Temperature' in line or 'Duration' in line or 'Count' in line or
+                 'Name' in line or 'State' in line or 'Component' in line)):
+                # Extract and store headers for later use
+                parsed_headers = self._parse_header_line(line)
+                headers_captured = True
                 current_idx += 1
                 continue
             else:
                 # This should be the beginning of actual data
                 break
+        
+        # Add header information to data if we captured headers
+        if parsed_headers and len(parsed_headers) >= 2:
+            header_key = parsed_headers[0]['name']  # First header as key
+            header_value = parsed_headers[1]['name']  # Second header name
+            if parsed_headers[1]['unit']:  # Add unit if present
+                header_value += f" ({parsed_headers[1]['unit']})"
+            table_data[header_key] = header_value
         
         # Extract data rows until empty line
         while current_idx < len(lines):
@@ -289,6 +310,42 @@ class SocwatchParser(BaseParser):
             current_idx += 1
         
         return table_data
+    
+    def _parse_header_line(self, header_line: str) -> List[Dict[str, str]]:
+        """Parse header line to extract column names and units."""
+        headers = []
+        
+        # Split by comma to get individual column headers
+        header_parts = [part.strip().strip('"') for part in header_line.split(',') if part.strip()]
+        
+        for header_part in header_parts:
+            header_info = {'name': header_part, 'unit': ''}
+            
+            # Extract units from parentheses
+            if '(' in header_part and ')' in header_part:
+                # Find content within parentheses
+                start_paren = header_part.find('(')
+                end_paren = header_part.rfind(')')
+                if start_paren < end_paren:
+                    unit_content = header_part[start_paren + 1:end_paren]
+                    header_info['unit'] = unit_content
+                    header_info['name'] = header_part[:start_paren].strip()
+            
+            # Handle common unit patterns
+            if 'percentage' in header_part.lower():
+                header_info['unit'] = '%' if not header_info['unit'] else header_info['unit']
+            elif 'temperature' in header_part.lower():
+                header_info['unit'] = '°C' if not header_info['unit'] else header_info['unit']
+            elif 'time' in header_part.lower():
+                header_info['unit'] = 'ms' if not header_info['unit'] else header_info['unit']
+            elif 'duration' in header_part.lower():
+                header_info['unit'] = 'ms' if not header_info['unit'] else header_info['unit']
+            elif 'frequency' in header_part.lower() or 'mhz' in header_part.lower():
+                header_info['unit'] = 'MHz' if not header_info['unit'] else header_info['unit']
+            
+            headers.append(header_info)
+        
+        return headers
     
     def _parse_os_wakeups_table(self, table_lines: List[str]) -> Dict[str, Any]:
         """Parse OS wakeups table."""

@@ -147,7 +147,7 @@ def generate_excel_report(results, folders_info, start_time):
     
     # Organize data by folder
     folder_data = {}
-    all_metrics = set()
+    all_metrics = []  # Use list to preserve order instead of set
     
     # Group results by folder and collect all metrics
     for result in results:
@@ -173,12 +173,14 @@ def generate_excel_report(results, folders_info, start_time):
                         # Extract individual power metrics from power_data dictionary
                         for power_metric, power_value in value.items():
                             folder_data[folder_name][power_metric] = power_value
-                            all_metrics.add(power_metric)
+                            if power_metric not in all_metrics:  # Preserve order, avoid duplicates
+                                all_metrics.append(power_metric)
                     elif key == 'socwatch_data' and isinstance(value, dict):
                         # Extract individual socwatch metrics from socwatch_data dictionary
                         for socwatch_metric, socwatch_value in value.items():
                             folder_data[folder_name][socwatch_metric] = socwatch_value
-                            all_metrics.add(socwatch_metric)
+                            if socwatch_metric not in all_metrics:  # Preserve order, avoid duplicates
+                                all_metrics.append(socwatch_metric)
                     else:
                         # Create unique metric names for different parsers
                         if parser_name == 'power':
@@ -189,12 +191,13 @@ def generate_excel_report(results, folders_info, start_time):
                             metric_name = f"{parser_name}_{key}"
                         
                         folder_data[folder_name][metric_name] = value
-                        all_metrics.add(metric_name)
+                        if metric_name not in all_metrics:  # Preserve order, avoid duplicates
+                            all_metrics.append(metric_name)
     
-    # Sort folders numerically 
-    sorted_folders = sorted(folder_data.keys(), key=lambda x: int(x.split('_')[-1]))
+    # Keep original folder order (no sorting)
+    sorted_folders = list(folder_data.keys())
     
-    # Order metrics according to DAQ targets configuration, preserve natural order for others
+    # Order metrics according to DAQ targets configuration, preserve natural discovery order for others
     daq_metrics = [metric for metric in daq_targets_order if metric in all_metrics]
     other_metrics = [metric for metric in all_metrics if metric not in daq_targets_order]
     sorted_metrics = daq_metrics + other_metrics
