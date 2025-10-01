@@ -73,6 +73,6 @@ setup(
     },
     include_package_data=True,
     package_data={
-        "workload_parser": ["config/*.json", "config/*.yaml"],
+        "workload_parser": ["config/*.json"],
     },
 )

@@ -61,7 +61,7 @@ where = ["."]
 include = ["workload_parser*"]
 
 [tool.setuptools.package-data]
-workload_parser = ["config/*.json", "config/*.yaml"]
+workload_parser = ["config/*.json"]
 
 [tool.black]
 line-length = 100
