@@ -261,20 +261,17 @@ def socwatch_table_type_checker(table_data: List[List[str]], label: str, core_ty
         return temp_avr_table(table_data, label)
     elif label == 'PMC+SLP_S0':
         return default_residency_table(table_data, 0, 2)
-    elif label == 'NPU_Pstate':
-        # NPU P-state with predefined buckets
-        buckets = ["0", "1900", "1901-2900", "2901-3899", "3900"]
-        return bucketized_table(table_data, 0, 1, buckets, label)
-    elif label == 'NoC_Pstate':
-        # Network on Chip P-state with predefined buckets
-        buckets = ["400", "401-1049", "1050"]
-        return bucketized_table(table_data, 0, 1, buckets, label)
-    elif label == 'iGFX_Pstate':
-        # Integrated Graphics P-state with predefined buckets
-        buckets = ["0", "400", "401-1799", "1800-2049", "2050"]
-        return bucketized_table(table_data, 0, 1, buckets, label)
+    elif label in ['NPU_Pstate', 'NoC_Pstate', 'iGFX_Pstate']:
+        # Check if config has buckets defined for this table
+        if soc_target and 'buckets' in soc_target:
+            # Config HAS buckets defined, so DO bucketize using config buckets
+            return bucketized_table(table_data, 0, 1, soc_target['buckets'], label)
+        else:
+            # Config does NOT have buckets, so DON'T bucketize - just return all frequencies
+            return default_residency_table(table_data, 0, 1)
     elif soc_target and 'buckets' in soc_target:
-        return bucketized_table(table_data, 0, 1, soc_target['buckets'])
+        # For other tables that have buckets in config
+        return bucketized_table(table_data, 0, 1, soc_target['buckets'], label)
     else:
         return default_residency_table(table_data, 0, 1)
 
