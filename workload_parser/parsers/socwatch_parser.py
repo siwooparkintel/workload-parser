@@ -98,7 +98,7 @@ def core_residency_table(table_data: List[List[str]]) -> Dict[str, Any]:
 
 
 def os_wakeups_table(table_data: List[List[str]]) -> Dict[str, Any]:
-    """Parse OS wakeups table."""
+    """Parse OS wakeups table for Thread Wakeups (OS) / Processes by Platform Busy Duration."""
     data = {}
     for idx, line in enumerate(table_data):
         if len(line) >= 3:
@@ -107,10 +107,28 @@ def os_wakeups_table(table_data: List[List[str]]) -> Dict[str, Any]:
                 value = f"{line[1].split(' ')[0]} ({' '.join(line[2].split(' ')[:-1])})"
             elif idx == 1:
                 key = "Rank"
-                value = f"{line[1].split(' ')[0]} ({line[2]})"
+                # Extract percentage from the data and add "Overall" prefix
+                process_name = line[1].split(' ')[0]
+                # Look for percentage in parentheses in the third column
+                percentage_match = line[2].split('(')[-1].split(')')[0] if '(' in line[2] and ')' in line[2] else line[2]
+                value = f"Overall ({process_name})"
             else:
-                key = line[0] if line[0] else f"Entry_{idx}"
-                value = f"{line[1].split(' ')[0]} ({line[2]})"
+                # For Thread Wakeups (OS): Join Rank.ProcessName with CPU%(Platform) in parentheses
+                rank = line[0] if line[0] else f"Entry_{idx}"
+                
+                # Extract process name (remove PID from process name)
+                process_name_with_pid = line[1] if len(line) > 1 else ""
+                # Remove PID part - typically in format "ProcessName (PID)"
+                if '(' in process_name_with_pid and ')' in process_name_with_pid:
+                    process_name = process_name_with_pid.split('(')[0].strip()
+                else:
+                    process_name = process_name_with_pid.split(' ')[0] if process_name_with_pid else ""
+                
+                # Extract CPU % (Platform) from 3rd column
+                cpu_platform = line[2] if len(line) > 2 else ""
+                
+                key = rank
+                value = f"{rank}.{process_name} ({cpu_platform})"
             data[key] = value
     return data
 
