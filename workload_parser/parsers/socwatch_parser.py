@@ -153,47 +153,90 @@ def default_residency_table(table_data: List[List[str]], key_idx: int = 0, value
     return data
 
 
-def bucketized_table(table_data: List[List[str]], key_idx: int = 0, value_idx: int = 1, buckets: List[str] = None) -> Dict[str, Any]:
-    """Parse bucketized table with frequency ranges."""
-    data = {}
-    bucketized_data = {bucket: 0 for bucket in (buckets or [])}
+def bucketized_table(table_data: List[List[str]], key_idx: int = 0, value_idx: int = 1, buckets: List[str] = None, table_label: str = None) -> Dict[str, Any]:
+    """Parse bucketized table with frequency ranges for NOC, NPU, and iGFX tables."""
     
+    # For bucketized tables, we only want to return the bucketed data, not the original raw data
+    if not buckets:
+        # If no buckets provided, fall back to original behavior
+        data = {}
+        for idx, line in enumerate(table_data):
+            if len(line) > max(key_idx, value_idx):
+                key = line[key_idx].strip()
+                value = line[value_idx].strip()
+                data[key] = value
+        return data
+    
+    # Initialize bucketized data structure
+    bucketized_data = {bucket: 0.0 for bucket in buckets}
+    
+    # Process each line of table data (skip header row)
     for idx, line in enumerate(table_data):
+        if idx == 0:  # Skip header row
+            continue
+            
         if len(line) > max(key_idx, value_idx):
-            key = line[key_idx]
-            if "_Pstate" in str(key) and idx > 0 and "." in str(key):
-                key = key.split(".")[0]
+            key = line[key_idx].strip()
+            value = line[value_idx].strip()
+                
+            try:
+                # Convert frequency to float for proper comparison
+                freq = float(key)
+                numeric_value = float(value)
+            except (ValueError, TypeError):
+                # Skip non-numeric data
+                continue
             
-            value = line[value_idx]
-            data[key] = value
-            
-            # Bucketize if buckets are provided and this is not header row
-            if idx > 0 and buckets:
-                for bucket in bucketized_data:
+            # Check each bucket for frequency matches
+            matched = False
+            for bucket in buckets:
+                if "-" in bucket:
+                    # Range bucket: accumulate values for frequencies in range
                     try:
-                        if "-" in bucket:
-                            # Range bucket
-                            ranges = bucket.split("-")
-                            if len(ranges) == 2:
-                                min_val = int(ranges[0])
-                                max_val = int(ranges[1])
-                                if min_val <= int(key) <= max_val:
-                                    bucketized_data[bucket] += float(value)
-                        elif bucket == key:
-                            # Exact match
-                            bucketized_data[bucket] = float(value)
+                        ranges = bucket.split("-")
+                        if len(ranges) == 2:
+                            min_freq = float(ranges[0])
+                            max_freq = float(ranges[1])
+                            if min_freq <= freq <= max_freq:
+                                bucketized_data[bucket] += numeric_value
+                                matched = True
+                                break  # Found the bucket, no need to check others
+                    except (ValueError, TypeError):
+                        continue
+                else:
+                    # Single frequency bucket: direct copy if exact match
+                    try:
+                        bucket_freq = float(bucket)
+                        if freq == bucket_freq:
+                            bucketized_data[bucket] = numeric_value
+                            matched = True
+                            break  # Found exact match, no need to check others
                     except (ValueError, TypeError):
                         continue
     
-    # Combine original data with bucketized data
-    if buckets:
-        # Add header first, then bucketized data
-        first_item = next(iter(data.items())) if data else ("Header", "Value")
-        extended = {first_item[0]: first_item[1]}
-        extended.update(bucketized_data)
-        return extended
+    # Return only bucketized results with table-specific header
+    result_data = {}
     
-    return data
+    # Determine the appropriate percentage label based on table type
+    if table_label == 'NPU_Pstate':
+        percentage_label = "NPU (%)"
+    elif table_label == 'NoC_Pstate':
+        percentage_label = "NOC (%)"
+    elif table_label == 'iGFX_Pstate':
+        percentage_label = "IGFX (%)"
+    else:
+        percentage_label = "Frequency Residency (%)"  # fallback
+    
+    result_data["Frequency Bucket (MHz)"] = percentage_label
+    
+    # Add bucketized data with proper formatting
+    for bucket in buckets:
+        accumulated_value = bucketized_data[bucket]
+        # Round accumulated values to 2 decimal places
+        formatted_value = round(accumulated_value, 2)
+        result_data[bucket] = formatted_value
+    
+    return result_data
 
 
 def socwatch_table_type_checker(table_data: List[List[str]], label: str, core_type: Dict[str, str] = None, 
@@ -218,6 +261,18 @@ def socwatch_table_type_checker(table_data: List[List[str]], label: str, core_ty
         return temp_avr_table(table_data, label)
     elif label == 'PMC+SLP_S0':
         return default_residency_table(table_data, 0, 2)
+    elif label == 'NPU_Pstate':
+        # NPU P-state with predefined buckets
+        buckets = ["0", "1900", "1901-2900", "2901-3899", "3900"]
+        return bucketized_table(table_data, 0, 1, buckets, label)
+    elif label == 'NoC_Pstate':
+        # Network on Chip P-state with predefined buckets
+        buckets = ["400", "401-1049", "1050"]
+        return bucketized_table(table_data, 0, 1, buckets, label)
+    elif label == 'iGFX_Pstate':
+        # Integrated Graphics P-state with predefined buckets
+        buckets = ["0", "400", "401-1799", "1800-2049", "2050"]
+        return bucketized_table(table_data, 0, 1, buckets, label)
     elif soc_target and 'buckets' in soc_target:
         return bucketized_table(table_data, 0, 1, soc_target['buckets'])
     else:
@@ -734,6 +789,10 @@ class SocwatchParser(BaseParser):
         # Check for DC count table - colon separated single line
         if table_key == 'DC_count':
             return len(keys) >= 1 and not any('(' in str(key) and ')' in str(key) for key in keys[:2])
+        
+        # Check for bucketized P-state tables - they have "Frequency Bucket (MHz)" header
+        if table_key in ['NPU_Pstate', 'NoC_Pstate', 'iGFX_Pstate']:
+            return any('Frequency Bucket (MHz)' in str(key) for key in keys)
         
         # For C-state and P-state tables, check if they have proper structure
         if table_key in ['Core_Cstate', 'ACPI_Cstate', 'PKG_Cstate', 'CPU_Pstate', 'CPU_Pavr']:
