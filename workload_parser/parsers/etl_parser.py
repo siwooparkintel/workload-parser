@@ -1,6 +1,18 @@
 """
 Enhanced ETL Parser with timestamp and event analysis.
-Based on the original ETL_parser.py but with modern architecture.
+Based         result = {
+            'file        result = {
+            'file_info': {
+                'path': str(file_path)
+            }
+        }
+                'path': str(file_path)
+            }
+        }l ETL_parser.py        result = {
+            'file_info': {
+                'path': str(file_path)
+            }
+        }modern architecture.
 """
 
 import re
@@ -66,17 +78,8 @@ class ETLParser(BaseParser):
         file_stats = file_path.stat()
         
         result = {
-            'data_type': 'etl_binary',
-            'parser': 'ETLParser',
-            'etl_data': {
-                'file_type': 'binary_etl',
-                'parsing_note': 'Binary ETL requires Windows ETW tools for full parsing',
-                'file_size_bytes': file_stats.st_size,
-                'file_modification_time': file_stats.st_mtime
-            },
             'file_info': {
-                'path': str(file_path),
-                'size_bytes': file_stats.st_size
+                'path': str(file_path)
             }
         }
         
@@ -266,8 +269,9 @@ class ETLParser(BaseParser):
         if not super().validate_data(data):
             return False
         
-        etl_data = data.get('etl_data', {})
-        return len(etl_data) > 0
+        # Check if we have file_info with path (simplified structure)
+        file_info = data.get('file_info', {})
+        return isinstance(file_info, dict) and 'path' in file_info
 
 
 class ModelOutputParser(BaseParser):
@@ -310,13 +314,8 @@ class ModelOutputParser(BaseParser):
                 model_data = self._parse_model_content(file_path)
             
             result = {
-                'data_type': 'model_output',
-                'parser': 'ModelOutputParser',
-                'model_output_data': model_data,
                 'file_info': {
-                    'path': str(file_path),
-                    'exists': file_path.exists(),
-                    'size_bytes': file_path.stat().st_size if file_path.exists() else 0
+                    'path': str(file_path)
                 }
             }
             

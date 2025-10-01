@@ -78,10 +78,14 @@ class PacsParser(BaseParser):
             
             # Prepare result
             result = {
-                'data_type': 'pacs',
-                'columns': list(df.columns),
-                'row_count': len(df),
-                'raw_data': df.to_dict('records')
+                'pacs_data': {
+                    'columns': list(df.columns),
+                    'row_count': len(df),
+                    'raw_data': df.to_dict('records')
+                },
+                'file_info': {
+                    'path': str(file_path)
+                }
             }
             
             self.logger.info(f"Parsed PACS data: {len(df)} rows, {len(df.columns)} columns")
@@ -113,10 +117,14 @@ class IntelEtlParser(BaseParser):
             if file_path.suffix.lower() == '.etl':
                 # Binary ETL file - return metadata only for now
                 result = {
-                    'data_type': 'intel_etl',
-                    'file_type': 'binary_etl',
-                    'file_size': file_path.stat().st_size,
-                    'note': 'Binary ETL file - requires ETW processing tools for full parsing'
+                    'intel_etl_data': {
+                        'file_type': 'binary_etl',
+                        'file_size': file_path.stat().st_size,
+                        'note': 'Binary ETL file - requires ETW processing tools for full parsing'
+                    },
+                    'file_info': {
+                        'path': str(file_path)
+                    }
                 }
             else:
                 # Text-based ETL file
@@ -125,11 +133,15 @@ class IntelEtlParser(BaseParser):
                 
                 lines = content.split('\n')
                 result = {
-                    'data_type': 'intel_etl',
-                    'file_type': 'text_etl',
-                    'line_count': len(lines),
-                    'content_sample': lines[:10],  # First 10 lines
-                    'raw_content': content
+                    'intel_etl_data': {
+                        'file_type': 'text_etl',
+                        'line_count': len(lines),
+                        'content_sample': lines[:10],  # First 10 lines
+                        'raw_content': content
+                    },
+                    'file_info': {
+                        'path': str(file_path)
+                    }
                 }
             
             self.logger.info(f"Parsed Intel ETL file: {file_path.name}")
@@ -190,10 +202,14 @@ class GenericCsvParser(BaseParser):
                 
                 lines = content.split('\n')
                 return {
-                    'data_type': 'text_file',
-                    'line_count': len(lines),
-                    'content_sample': lines[:20],
-                    'parsing_info': 'Parsed as text file - CSV parsing failed'
+                    'text_data': {
+                        'line_count': len(lines),
+                        'content_sample': lines[:20],
+                        'parsing_info': 'Parsed as text file - CSV parsing failed'
+                    },
+                    'file_info': {
+                        'path': str(file_path)
+                    }
                 }
             
             # Clean column names
@@ -213,11 +229,16 @@ class GenericCsvParser(BaseParser):
                 data_type = 'generic_csv'
             
             result = {
-                'data_type': data_type,
-                'columns': list(df.columns),
-                'row_count': len(df),
-                'parsing_info': f'Parsed with delimiter={used_delimiter}, encoding={used_encoding}',
-                'raw_data': df.to_dict('records')
+                'csv_data': {
+                    'data_type': data_type,
+                    'columns': list(df.columns),
+                    'row_count': len(df),
+                    'parsing_info': f'Parsed with delimiter={used_delimiter}, encoding={used_encoding}',
+                    'raw_data': df.to_dict('records')
+                },
+                'file_info': {
+                    'path': str(file_path)
+                }
             }
             
             self.logger.info(f"Parsed generic CSV: {len(df)} rows, {len(df.columns)} columns")
@@ -244,12 +265,16 @@ class LogFileParser(BaseParser):
             non_empty_lines = [line.strip() for line in lines if line.strip()]
             
             result = {
-                'data_type': 'log_file',
-                'total_lines': len(lines),
-                'non_empty_lines': len(non_empty_lines),
-                'file_size': file_path.stat().st_size,
-                'content_sample': non_empty_lines[:20],  # First 20 non-empty lines
-                'full_content': content
+                'log_data': {
+                    'total_lines': len(lines),
+                    'non_empty_lines': len(non_empty_lines),
+                    'file_size': file_path.stat().st_size,
+                    'content_sample': non_empty_lines[:20],  # First 20 non-empty lines
+                    'full_content': content
+                },
+                'file_info': {
+                    'path': str(file_path)
+                }
             }
             
             self.logger.info(f"Parsed log file: {len(lines)} lines")

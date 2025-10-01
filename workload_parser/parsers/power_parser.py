@@ -74,17 +74,9 @@ class PowerParser(BaseParser):
             
             # Build result
             result = {
-                'data_type': 'power',
-                'parser': 'PowerParser',
                 'power_data': power_data,
                 'file_info': {
-                    'path': str(file_path),
-                    'total_rows': len(df),
-                    'columns': list(df.columns)
-                },
-                'metadata': {
-                    'daq_targets_found': len([k for k in self.daq_targets.keys() if k in power_data]),
-                    'daq_targets_total': len(self.daq_targets)
+                    'path': str(file_path)
                 }
             }
             
@@ -219,14 +211,9 @@ class PowerTraceParser(BaseParser):
                     }
             
             result = {
-                'data_type': 'power_trace',
-                'parser': 'PowerTraceParser',
                 'trace_stats': trace_stats,
                 'file_info': {
-                    'path': str(file_path),
-                    'total_samples': len(df),
-                    'columns': list(df.columns),
-                    'duration_estimate': len(df) / self.sample_rate if self.sample_rate > 0 else None
+                    'path': str(file_path)
                 }
             }
             

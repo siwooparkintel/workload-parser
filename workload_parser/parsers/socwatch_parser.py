@@ -346,16 +346,9 @@ class SocwatchParser(BaseParser):
             
             # Prepare result
             result = {
-                'data_type': 'socwatch',
-                'parser': 'SocwatchParser',
                 'socwatch_data': target_metrics,
                 'file_info': {
-                    'path': str(file_path),
-                    'content_size': len(content)
-                },
-                'metadata': {
-                    'tables_found': len(socwatch_tables),
-                    'targets_found': len(target_metrics)
+                    'path': str(file_path)
                 }
             }
             
@@ -403,84 +396,9 @@ class SocwatchParser(BaseParser):
         
         return socwatch_tables
     
-    def _extract_os_wakeups(self, lines: List[str]) -> List[Dict[str, Any]]:
-        """Extract OS wakeups data from Socwatch content."""
-        os_wakeups = []
-        
-        # Find the "Processes by Platform Busy Duration" section
-        in_process_section = False
-        
-        for line in lines:
-            line = line.strip()
-            
-            # Look for the process section header
-            if "Processes by Platform Busy Duration" in line:
-                in_process_section = True
-                continue
-            
-            # Skip header lines and separators
-            if in_process_section and (line.startswith('Rank,') or line.startswith('----') or not line):
-                continue
-            
-            # Process data lines
-            if in_process_section and ',' in line:
-                try:
-                    parts = [part.strip() for part in line.split(',')]
-                    if len(parts) >= 3:
-                        # Extract rank, process name, and CPU percentage
-                        rank = parts[0]
-                        process_name = parts[1]
-                        cpu_percent = parts[2]
-                        
-                        # Clean up the data
-                        if rank and process_name and cpu_percent:
-                            # Remove quotes and extra spaces
-                            process_name = process_name.strip('"')
-                            cpu_percent = cpu_percent.strip('"')
-                            
-                            try:
-                                cpu_float = float(cpu_percent)
-                                os_wakeups.append({
-                                    'rank': rank,
-                                    'process': process_name,
-                                    'cpu_percent': cpu_float
-                                })
-                            except ValueError:
-                                continue
-                
-                except Exception:
-                    continue
-            
-            # Stop when we reach the legend or next section
-            if in_process_section and ("Legend:" in line or "Complete list" in line):
-                break
-        
-        return os_wakeups
+
     
-    def _extract_core_states(self, lines: List[str]) -> Dict[str, str]:
-        """Extract Core C-State data from Socwatch content."""
-        core_states = {}
-        
-        # Look for core state information in various sections
-        # Since this varies by platform, start with default values
-        # This can be enhanced based on actual Socwatch file format
-        for i in range(4):  # Default to 4 cores
-            core_states[f'Core_{i}'] = 'C'
-        
-        # Look for specific core state patterns in the content
-        for line in lines:
-            line = line.strip()
-            
-            # Look for core state patterns - this would need customization
-            # based on the actual format in your Socwatch files
-            if 'Core' in line and ('C-State' in line or 'Residency' in line):
-                # Extract actual core state information if found
-                # For now, use enhanced state indicators
-                for i in range(8):  # Check up to 8 cores
-                    core_states[f'Core_{i}'] = 'LNC'  # Low Normal Core state
-                break
-        
-        return core_states
+
     
     def _load_socwatch_targets(self) -> List[Dict[str, Any]]:
         """Load socwatch targets from enhanced config."""
@@ -573,119 +491,17 @@ class SocwatchParser(BaseParser):
                     fallback_data[row[0]] = row[1]
             return fallback_data
     
-    def _parse_header_line(self, header_line: str) -> List[Dict[str, str]]:
-        """Parse header line to extract column names and units."""
-        headers = []
-        
-        # Split by comma to get individual column headers
-        header_parts = [part.strip().strip('"') for part in header_line.split(',') if part.strip()]
-        
-        for header_part in header_parts:
-            header_info = {'name': header_part, 'unit': ''}
-            
-            # Extract units from parentheses
-            if '(' in header_part and ')' in header_part:
-                # Find content within parentheses
-                start_paren = header_part.find('(')
-                end_paren = header_part.rfind(')')
-                if start_paren < end_paren:
-                    unit_content = header_part[start_paren + 1:end_paren]
-                    header_info['unit'] = unit_content
-                    header_info['name'] = header_part[:start_paren].strip()
-            
-            # Handle common unit patterns
-            if 'percentage' in header_part.lower():
-                header_info['unit'] = '%' if not header_info['unit'] else header_info['unit']
-            elif 'temperature' in header_part.lower():
-                header_info['unit'] = '°C' if not header_info['unit'] else header_info['unit']
-            elif 'time' in header_part.lower():
-                header_info['unit'] = 'ms' if not header_info['unit'] else header_info['unit']
-            elif 'duration' in header_part.lower():
-                header_info['unit'] = 'ms' if not header_info['unit'] else header_info['unit']
-            elif 'frequency' in header_part.lower() or 'mhz' in header_part.lower():
-                header_info['unit'] = 'MHz' if not header_info['unit'] else header_info['unit']
-            
-            headers.append(header_info)
-        
-        return headers
+
     
-    def _parse_os_wakeups_table(self, table_lines: List[str]) -> Dict[str, Any]:
-        """Parse OS wakeups table."""
-        wakeups_data = {}
-        
-        for i, line in enumerate(table_lines):
-            parts = [part.strip() for part in line.split(',') if part.strip()]
-            if len(parts) >= 3:
-                if i == 0:
-                    # Header or first data row
-                    wakeups_data['OS_wakeups'] = f"{parts[1]} ({parts[2]})"
-                else:
-                    # Process entries
-                    rank = parts[0] if parts[0].isdigit() else str(i)
-                    process_name = parts[1].split('(')[0].strip() if '(' in parts[1] else parts[1]
-                    cpu_percent = parts[2].replace('%', '').strip()
-                    wakeups_data[rank] = f"{process_name} ({cpu_percent}%)"
-        
-        return wakeups_data
+
     
-    def _parse_temperature_table(self, table_lines: List[str], key: str) -> Dict[str, Any]:
-        """Parse temperature table."""
-        temp_data = {}
-        
-        for line in table_lines:
-            parts = [part.strip() for part in line.split(',') if part.strip()]
-            if len(parts) >= 5:
-                # Temperature format: Component, Min, Max, Avg, Unit
-                component = parts[0]
-                avg_temp = parts[4] if len(parts) > 4 else parts[3]
-                temp_data[component] = avg_temp
-        
-        return temp_data
+
     
-    def _parse_cstate_table(self, table_lines: List[str], key: str) -> Dict[str, Any]:
-        """Parse C-state residency table."""
-        cstate_data = {}
-        
-        for line in table_lines:
-            parts = [part.strip() for part in line.split(',') if part.strip()]
-            if len(parts) >= 2:
-                state_name = parts[0]
-                residency = parts[1]
-                if '%' in residency or 'Residency' in residency:
-                    cstate_data[state_name] = residency.replace('%', '').strip()
-        
-        return cstate_data
+
     
-    def _parse_pstate_table(self, table_lines: List[str], key: str, buckets: List[str]) -> Dict[str, Any]:
-        """Parse P-state table with optional bucketing."""
-        pstate_data = {}
-        
-        for line in table_lines:
-            parts = [part.strip() for part in line.split(',') if part.strip()]
-            if len(parts) >= 2:
-                freq_or_state = parts[0]
-                residency = parts[1]
-                pstate_data[freq_or_state] = residency
-        
-        # Apply bucketing if specified
-        if buckets:
-            pstate_data = self._apply_bucketing(pstate_data, buckets)
-        
-        return pstate_data
+
     
-    def _parse_bandwidth_table(self, table_lines: List[str], key: str) -> Dict[str, Any]:
-        """Parse bandwidth table."""
-        bw_data = {}
-        
-        for line in table_lines:
-            parts = [part.strip() for part in line.split(',') if part.strip()]
-            if len(parts) >= 3:
-                # Usually has component, rate, total
-                component = parts[0]
-                rate = parts[2] if len(parts) > 2 else parts[1]  # Average rate
-                bw_data[f"{key}_AvrRt(MB/s)"] = rate
-        
-        return bw_data
+
     
     def _parse_default_table(self, table_lines: List[str], key: str) -> Dict[str, Any]:
         """Parse default residency table."""
@@ -894,10 +710,6 @@ class SocwatchParser(BaseParser):
         if not super().validate_data(data):
             return False
         
-        # Check data type
-        if data.get('data_type') != 'socwatch':
-            return False
-        
         # Check if we have socwatch data
         socwatch_data = data.get('socwatch_data', {})
         if not isinstance(socwatch_data, dict):
@@ -978,12 +790,9 @@ class PCIeParser(BaseParser):
             
             # Prepare result
             result = {
-                'data_type': 'pcie_socwatch',
-                'parser': 'PCIeParser',
                 'pcie_data': pcie_data,
                 'file_info': {
-                    'path': str(file_path),
-                    'content_size': len(content)
+                    'path': str(file_path)
                 }
             }
             
@@ -1021,4 +830,6 @@ class PCIeParser(BaseParser):
         if not super().validate_data(data):
             return False
         
-        return data.get('data_type') == 'pcie_socwatch'
+        # Check if we have pcie data
+        pcie_data = data.get('pcie_data', {})
+        return isinstance(pcie_data, dict)

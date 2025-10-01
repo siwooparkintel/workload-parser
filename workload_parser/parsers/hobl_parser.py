@@ -39,8 +39,6 @@ class HOBLParser(BaseParser):
             test_result = 'PASS' if file_path.name == '.PASS' else 'FAIL'
             
             result = {
-                'data_type': 'hobl_marker',
-                'parser': 'HOBLParser',
                 'hobl_data': {
                     'test_result': test_result,
                     'dataset_path': str(file_path.parent),
@@ -48,8 +46,7 @@ class HOBLParser(BaseParser):
                     'dataset_hierarchy': dataset_info['hierarchy']
                 },
                 'file_info': {
-                    'path': str(file_path),
-                    'marker_type': test_result
+                    'path': str(file_path)
                 }
             }
             

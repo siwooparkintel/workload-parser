@@ -182,15 +182,31 @@ def generate_excel_report(results, folders_info, start_time):
                             if socwatch_metric not in all_metrics:  # Preserve order, avoid duplicates
                                 all_metrics.append(socwatch_metric)
                     else:
-                        # Create unique metric names for different parsers
-                        if parser_name == 'power':
-                            metric_name = key
-                        elif parser_name == 'socwatch':
-                            metric_name = f"socwatch_{key}"
+                        # Handle file_info fields - extract just the path value
+                        if key in ['file_info', 'etl_file_info', 'socwatch_file_info'] and isinstance(value, dict):
+                            # Extract path from file_info dictionary
+                            path_value = value.get('path', str(value))  # Fallback to string representation if no path
+                            
+                            # Create unique metric names for different parsers
+                            if parser_name == 'power':
+                                metric_name = key
+                            elif parser_name == 'socwatch':
+                                metric_name = f"socwatch_{key}"
+                            else:
+                                metric_name = f"{parser_name}_{key}"
+                            
+                            folder_data[folder_name][metric_name] = path_value
                         else:
-                            metric_name = f"{parser_name}_{key}"
+                            # Create unique metric names for different parsers
+                            if parser_name == 'power':
+                                metric_name = key
+                            elif parser_name == 'socwatch':
+                                metric_name = f"socwatch_{key}"
+                            else:
+                                metric_name = f"{parser_name}_{key}"
+                            
+                            folder_data[folder_name][metric_name] = value
                         
-                        folder_data[folder_name][metric_name] = value
                         if metric_name not in all_metrics:  # Preserve order, avoid duplicates
                             all_metrics.append(metric_name)
     
@@ -259,7 +275,8 @@ def generate_excel_report(results, folders_info, start_time):
     df = pd.DataFrame(all_rows, columns=column_names)
     
     # Create .testdata directory if it doesn't exist
-    testdata_dir = Path('.testdata')
+    # testdata_dir = Path('.testdata')
+    testdata_dir = Path('//10.54.63.126/Pnpext/Siwoo/code/copoliot_tests')
     testdata_dir.mkdir(exist_ok=True)
     
     # Generate timestamped filename in .testdata folder
