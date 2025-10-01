@@ -685,10 +685,15 @@ class SocwatchParser(BaseParser):
             table_data = table_dict['data']
             
             if isinstance(table_data, dict) and table_data:
-                # Add table header
-                header_text = self._get_table_header_text(table_key, target_info, table_data)
-                header_key = f"{header_text}        {table_key}"
-                target_metrics[header_key] = self._get_table_header_value(table_key, table_data)
+                # Check if this is a specialized parsed table (from table classification)
+                # Specialized tables already have proper key-value structure and don't need extra headers
+                is_specialized_table = self._is_specialized_table_format(table_data, table_key)
+                
+                if not is_specialized_table:
+                    # Add table header only for non-specialized tables
+                    header_text = self._get_table_header_text(table_key, target_info, table_data)
+                    header_key = f"{header_text}        {table_key}"
+                    target_metrics[header_key] = self._get_table_header_value(table_key, table_data)
                 
                 # Add all data rows for this table before moving to the next table
                 # This ensures complete grouping of each table's data
@@ -697,6 +702,65 @@ class SocwatchParser(BaseParser):
                     target_metrics[data_key] = metric_value
         
         return target_metrics
+    
+    def _is_specialized_table_format(self, table_data: Dict[str, Any], table_key: str) -> bool:
+        """Check if table data has been processed by specialized parsing functions."""
+        # All tables processed by the new classification system should be considered specialized
+        # This prevents adding redundant headers for any table that went through socwatch_table_type_checker
+        
+        # Check if this looks like output from specialized parsing functions
+        keys = list(table_data.keys())
+        
+        # If table is empty, not specialized
+        if not keys:
+            return False
+        
+        # Check for bandwidth tables - they have a specific format with AvrRt in the key
+        if table_key.endswith('_BW'):
+            return len(keys) == 1 and 'AvrRt(MB/s)' in str(keys[0])
+        
+        # Check for temperature tables - they have component names as keys
+        if table_key in ['CPU_temp', 'SoC_temp']:
+            return len(keys) > 1 and table_key in str(keys[0])
+        
+        # Check for CPU model table - has specific key patterns
+        if table_key == 'CPU_model':
+            return any(key for key in keys if any(term in str(key).lower() for term in ['processor', 'cpu', 'family', 'model', 'stepping']))
+        
+        # Check for OS wakeups table - has specific format
+        if table_key == 'OS_wakeups':
+            return 'OS_wakeups' in keys
+        
+        # Check for DC count table - colon separated single line
+        if table_key == 'DC_count':
+            return len(keys) >= 1 and not any('(' in str(key) and ')' in str(key) for key in keys[:2])
+        
+        # For C-state and P-state tables, check if they have proper structure
+        if table_key in ['Core_Cstate', 'ACPI_Cstate', 'PKG_Cstate', 'CPU_Pstate', 'CPU_Pavr']:
+            # Specialized tables don't have generic header patterns like "Component (Unit)"
+            first_key = str(keys[0])
+            
+            # If first key contains generic patterns, it might not be specialized
+            generic_patterns = ['Component', 'State', 'Frequency', 'Residency', 'Time']
+            has_generic_pattern = any(pattern in first_key for pattern in generic_patterns)
+            
+            # If first key has units in parentheses and generic patterns, might not be specialized
+            if has_generic_pattern and '(' in first_key and ')' in first_key:
+                return False
+            
+            # Otherwise, assume it's been specialized
+            return True
+        
+        # For other table types, assume they've been processed by specialized functions
+        # if they don't look like raw CSV headers
+        first_key = str(keys[0])
+        
+        # Raw CSV headers typically have units in parentheses and descriptive names
+        looks_like_raw_header = ('(' in first_key and ')' in first_key and 
+                                any(term in first_key for term in ['Component', 'State', 'Frequency', 'Residency', 'Percentage']))
+        
+        # If it looks like a raw header, it probably wasn't specialized
+        return not looks_like_raw_header
     
     def _get_table_header_text(self, table_key: str, target_info: Dict[str, Any], table_data: Dict[str, Any]) -> str:
         """Get appropriate table header text based on table type."""
