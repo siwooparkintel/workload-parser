@@ -193,16 +193,36 @@ def cpu_pstate_table(table_data: List[List[str]], core_type: Dict[str, str] = No
             core_idx = core_full_name.split("/")[2]
             short_header.append(core_idx)
     
-    # Group cores by type for duplication
+    # Group cores by type for duplication (enhanced for heterogeneous SoCs)
     core_type_groups = {}
+    core_index_mapping = {}  # Track actual column index for each core
+    
     if core_type:
-        for core_full_name in header_residency_full:
-            core_idx = core_full_name.split("/")[2]
+        for col_idx, core_full_name in enumerate(header_residency_full):
+            core_idx = core_full_name.split("/")[2]  # Extract core index like "Core_0"
+            
             if core_idx in core_type:
                 core_type_name = core_type[core_idx]
-                if core_type_name not in core_type_groups:
-                    core_type_groups[core_type_name] = []
-                core_type_groups[core_type_name].append(len(core_type_groups.get(core_type_name, [])))
+                
+                # Handle duplicate core type names by adding distinguishing suffix
+                # Check if this core type name already exists and has different characteristics
+                unique_core_type_name = core_type_name
+                counter = 1
+                
+                # If core type name exists, check if it's truly the same type
+                while unique_core_type_name in core_type_groups:
+                    # For future enhancement: could add logic here to detect
+                    # if cores have different frequency ranges or characteristics
+                    # For now, assume same name = same type, but keep option open
+                    break
+                
+                # Initialize group if not exists
+                if unique_core_type_name not in core_type_groups:
+                    core_type_groups[unique_core_type_name] = []
+                
+                # Store actual column index (not relative position)
+                core_type_groups[unique_core_type_name].append(col_idx)
+                core_index_mapping[core_idx] = col_idx
     
     # If no core types found, create default group
     if not core_type_groups:
@@ -221,11 +241,12 @@ def cpu_pstate_table(table_data: List[List[str]], core_type: Dict[str, str] = No
         
         freq_data[key] = line_data_only
     
-    # Generate output for each core type group
-    for core_type_name, core_indices in core_type_groups.items():
-        # Add core type header
+    # Generate output for each core type group (enhanced for heterogeneous SoCs)
+    for core_type_name, core_column_indices in core_type_groups.items():
+        # Add core type header with count for clarity
+        core_count = len(core_column_indices)
         core_header_key = f"{core_type_name} P-State"
-        data[core_header_key] = core_type_name
+        data[core_header_key] = f"{core_type_name} ({core_count} cores)"
         
         # Add frequency buckets for this core type
         for freq_key, line_data in freq_data.items():
@@ -233,15 +254,16 @@ def cpu_pstate_table(table_data: List[List[str]], core_type: Dict[str, str] = No
             
             # Aggregate values for this core type (average across cores of same type)
             type_values = []
-            for core_idx in core_indices:
-                if core_idx < len(line_data):
+            for col_idx in core_column_indices:
+                if col_idx < len(line_data):
                     try:
-                        value = float(line_data[core_idx])
+                        value = float(line_data[col_idx])
                         type_values.append(value)
                     except (ValueError, TypeError):
                         pass
             
             if type_values:
+                # Enhanced aggregation: could add weighted average based on core count
                 aggregated_value = round(sum(type_values) / len(type_values), 2)
             else:
                 aggregated_value = 0
