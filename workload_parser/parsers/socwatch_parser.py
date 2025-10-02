@@ -153,6 +153,104 @@ def core_freq_avr_table(table_data: List[List[str]], key_idx: int = 0, value_idx
     return data
 
 
+def cpu_pstate_table(table_data: List[List[str]], core_type: Dict[str, str] = None) -> Dict[str, Any]:
+    """Parse CPU P-state table with core type grouping and frequency bucket formatting."""
+    data = {}
+    
+    # Skip if no data
+    if not table_data or len(table_data) == 0:
+        return data
+    
+    copied = table_data.copy()
+    header_start = copied[0][0]
+    
+    freq_idx = 1
+    data_label_lead = 2
+    last_residency = 0
+    
+    header = copied[0][data_label_lead:]
+    
+    # Find where percentage columns end
+    for core_label_idx in range(len(header)):
+        if "(%)" not in header[core_label_idx]:
+            last_residency = core_label_idx
+            break
+    
+    header_residency_full = header[:last_residency]
+    
+    # Create short header with core types
+    short_header = []
+    if core_type:
+        for core_full_name in header_residency_full:
+            core_idx = core_full_name.split("/")[2]  # Extract core index like "Core_0"
+            if core_idx in core_type:
+                short_header.append(core_idx + " " + core_type[core_idx])
+            else:
+                short_header.append(core_idx)
+    else:
+        # Fallback if no core_type available
+        for core_full_name in header_residency_full:
+            core_idx = core_full_name.split("/")[2]
+            short_header.append(core_idx)
+    
+    # Group cores by type for duplication
+    core_type_groups = {}
+    if core_type:
+        for core_full_name in header_residency_full:
+            core_idx = core_full_name.split("/")[2]
+            if core_idx in core_type:
+                core_type_name = core_type[core_idx]
+                if core_type_name not in core_type_groups:
+                    core_type_groups[core_type_name] = []
+                core_type_groups[core_type_name].append(len(core_type_groups.get(core_type_name, [])))
+    
+    # If no core types found, create default group
+    if not core_type_groups:
+        core_type_groups = {'CPU': list(range(len(short_header)))}
+    
+    # Process frequency data
+    freq_data = {}
+    for index in range(1, len(copied)):
+        row = copied[index]
+        line_data_only = row[data_label_lead:data_label_lead + last_residency]
+        
+        # Handle frequency key formatting
+        key = "-".join(row[freq_idx].split(" -- "))
+        if key == "0":
+            key = "0-idle"
+        
+        freq_data[key] = line_data_only
+    
+    # Generate output for each core type group
+    for core_type_name, core_indices in core_type_groups.items():
+        # Add core type header
+        core_header_key = f"{core_type_name} P-State"
+        data[core_header_key] = core_type_name
+        
+        # Add frequency buckets for this core type
+        for freq_key, line_data in freq_data.items():
+            formatted_key = f"{core_type_name} {freq_key}"
+            
+            # Aggregate values for this core type (average across cores of same type)
+            type_values = []
+            for core_idx in core_indices:
+                if core_idx < len(line_data):
+                    try:
+                        value = float(line_data[core_idx])
+                        type_values.append(value)
+                    except (ValueError, TypeError):
+                        pass
+            
+            if type_values:
+                aggregated_value = round(sum(type_values) / len(type_values), 2)
+            else:
+                aggregated_value = 0
+            
+            data[formatted_key] = aggregated_value
+    
+    return data
+
+
 def default_residency_table(table_data: List[List[str]], key_idx: int = 0, value_idx: int = 1) -> Dict[str, Any]:
     """Parse default residency table format."""
     data = {}
@@ -269,8 +367,8 @@ def socwatch_table_type_checker(table_data: List[List[str]], label: str, core_ty
     elif label == 'CPU_Pavr':
         return core_freq_avr_table(table_data, 0, 1)
     elif label == 'CPU_Pstate':
-        # Note: More complex parsing for per-core vs combined would need core_type parameter
-        return default_residency_table(table_data, 0, 1)
+        # Use specialized CPU P-state parsing with core type grouping
+        return cpu_pstate_table(table_data, core_type)
     elif label == 'DC_count':
         return one_line_colon_separator(table_data)
     elif label in ['DDR_BW', 'IO_BW', 'VC1_BW', 'NPU_BW', 'Media_BW', 'IPU_BW', 'CCE_BW', 'GT_BW', 'D2D_BW']:
