@@ -89,17 +89,17 @@ if (Test-Path ".venv\Scripts\python.exe") {
 
 # Build command arguments
 $testScript = "tests\test_data_integration.py"
-$args = @("--data-root", $DataRoot, "--output-dir", $OutputDir)
+$testArgs = @("--data-root", $DataRoot, "--output-dir", $OutputDir)
 
 if ($MaxFolders -gt 0) {
-    $args += @("--max-folders", $MaxFolders)
+    $testArgs += @("--max-folders", $MaxFolders)
     Write-Host "⚠ Testing limited to first $MaxFolders folders" -ForegroundColor Yellow
 }
 
 if ($UseDaqConfig) {
     $daqConfigPath = "config\daq_targets_default.json"
     if (Test-Path $daqConfigPath) {
-        $args += @("--daq-config", $daqConfigPath)
+        $testArgs += @("--daq-config", $daqConfigPath)
         Write-Host "✓ Using DAQ configuration: $daqConfigPath" -ForegroundColor Green
     } else {
         Write-Host "⚠ DAQ config not found: $daqConfigPath" -ForegroundColor Yellow
@@ -124,7 +124,7 @@ Write-Host ""
 $startTime = Get-Date
 
 try {
-    & $pythonCmd $testScript @args
+    & $pythonCmd $testScript @testArgs
     $exitCode = $LASTEXITCODE
 } catch {
     Write-Host "`nERROR: Test execution failed!" -ForegroundColor Red
