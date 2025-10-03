@@ -1,7 +1,7 @@
 """
 Workload Analyzer - Comprehensive workload data parsing and analysis tool
 
-This script parses workload data from baseline directories containing:
+This script parses workload data from directories containing:
 - Power measurement files (PACS summary)
 - ETL trace files 
 - Socwatch monitoring data
@@ -14,6 +14,7 @@ import sys
 import os
 import time
 import json
+import argparse
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -21,14 +22,91 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from workload_parser import WorkloadParser
 
-def main():
+def get_last_folder():
+    """Get the last used folder from config file"""
+    config_file = Path.home() / '.workload_parser_last_folder'
+    if config_file.exists():
+        try:
+            with open(config_file, 'r') as f:
+                last_folder = f.read().strip()
+                if os.path.exists(last_folder):
+                    return last_folder
+        except:
+            pass
+    return os.path.expanduser("~")
+
+def save_last_folder(folder_path):
+    """Save the last used folder to config file"""
+    try:
+        config_file = Path.home() / '.workload_parser_last_folder'
+        with open(config_file, 'w') as f:
+            f.write(folder_path)
+    except:
+        pass  # Silently fail if we can't save
+
+def select_folder_gui():
+    """Open a GUI folder selection dialog"""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        
+        # Create root window and hide it
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        
+        # Get last used folder or default to home
+        initial_dir = get_last_folder()
+        
+        # Open folder selection dialog
+        folder_path = filedialog.askdirectory(
+            title="Select Workload Data Folder",
+            initialdir=initial_dir
+        )
+        
+        root.destroy()
+        
+        # Save the selected folder for next time
+        if folder_path:
+            save_last_folder(folder_path)
+        
+        return folder_path
+    except ImportError:
+        print("ERROR: tkinter is not available. Please install tkinter or use -i option.")
+        return None
+    except Exception as e:
+        print(f"ERROR: Failed to open folder dialog: {e}")
+        return None
+
+def main(baseline_path=None, output_dir=None):
+    """
+    Main function to parse workload data and generate Excel report
+    
+    Args:
+        baseline_path: Path to workload data directory. If None, will use GUI to select folder.
+        output_dir: Output directory for Excel report. If None, uses input directory.
+    """
     # Start timing the entire process
     start_time = time.time()
     print(f"Starting workload parsing at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 80)
     
-    # Network path to the baseline directory
-    baseline_path = r"\\10.54.63.126\Pnpext\Siwoo\data\WW2533.2_CataV3ITCCAUHX2_DCBAL\Baseline"
+    # If no path provided, use GUI folder selector
+    if baseline_path is None:
+        print("No folder path provided. Opening folder selection dialog...")
+        baseline_path = select_folder_gui()
+        
+        if not baseline_path:
+            print("ERROR: No folder selected. Exiting.")
+            return None
+        
+        print(f"Selected folder: {baseline_path}")
+        print("=" * 80)
+    
+    # Validate path exists
+    if not os.path.exists(baseline_path):
+        print(f"ERROR: Path does not exist: {baseline_path}")
+        return None
     
     # Initialize parser and disable power_trace parser
     parser = WorkloadParser()
@@ -43,7 +121,7 @@ def main():
     
     print(f"After disabling power_trace: {parser.config.get_enabled_parsers()}")
     
-    # Parse all files in the baseline directory
+    # Parse all files in the directory
     results = parser.parse_directory(baseline_path)
     
     print(f"\nParsing Results:")
@@ -81,11 +159,16 @@ def main():
         file_path = result.get('_metadata', {}).get('file_path', '')
         parser_name = result.get('_metadata', {}).get('parser_name', '')
         
-        # Extract folder name (UHX2_DC_XXX)
+        # Extract folder name - look for common patterns like UHX2_DC_XXX or CataV3_XXX_XXX
         folder_name = None
         path_parts = file_path.replace('\\', '/').split('/')
+        
+        # Try to find a folder that looks like a test directory
+        # Common patterns: UHX2_DC_XXX, CataV3_XXX_XXX, or any folder ending with _XXX where XXX is digits
+        import re
         for part in path_parts:
-            if part.startswith('UHX2_DC_'):
+            # Match patterns like: UHX2_DC_000, CataV3_PCDfix_000, etc.
+            if re.search(r'_\d{3}$', part) or part.startswith('UHX2_DC_') or part.startswith('CataV3_'):
                 folder_name = part
                 break
         
@@ -134,14 +217,27 @@ def main():
                     print(f"  {metric}: {value}")
                 break
     
-    print(f"\nTotal baseline folders found: {len(folders)}")
+    print(f"\nTotal workload folders found: {len(folders)}")
     print(f"Successfully parsed files: {len(results)}")
     
     # Generate Excel report
-    generate_excel_report(results, folders, start_time)
+    return generate_excel_report(results, folders, start_time, baseline_path, output_dir)
 
-def generate_excel_report(results, folders_info, start_time):
-    """Generate Excel report in vertical format matching reference with DAQ targets order"""
+def generate_excel_report(results, folders_info, start_time, baseline_path, output_dir=None):
+    """Generate Excel report in vertical format matching reference with DAQ targets order
+    
+    Args:
+        results: Parsing results
+        folders_info: Folder information
+        start_time: Start time of processing
+        baseline_path: Path to input directory
+        output_dir: Output directory for Excel report. If None, uses input directory.
+    """
+    
+    # Check if we have any results
+    if not results:
+        print("\nERROR: No data to export. No files were successfully parsed.")
+        return None
     
     # Load DAQ targets order from config
     config_path = Path('config/enhanced_parser_config.json')
@@ -159,15 +255,19 @@ def generate_excel_report(results, folders_info, start_time):
     all_metrics = []  # Use list to preserve order instead of set
     
     # Group results by folder and collect all metrics
+    import re
     for result in results:
         file_path = result.get('_metadata', {}).get('file_path', '')
         parser_name = result.get('_metadata', {}).get('parser_name', '')
         
-        # Extract folder name
+        # Extract folder name - look for common patterns
         folder_name = None
         path_parts = file_path.replace('\\', '/').split('/')
+        
+        # Try to find a folder that looks like a test directory
         for part in path_parts:
-            if part.startswith('UHX2_DC_'):
+            # Match patterns like: UHX2_DC_000, CataV3_PCDfix_000, etc.
+            if re.search(r'_\d{3}$', part) or part.startswith('UHX2_DC_') or part.startswith('CataV3_'):
                 folder_name = part
                 break
         
@@ -224,6 +324,14 @@ def generate_excel_report(results, folders_info, start_time):
                         
                         if metric_name not in all_metrics:  # Preserve order, avoid duplicates
                             all_metrics.append(metric_name)
+    
+    # Check if we found any folders
+    if not folder_data:
+        print("\nWARNING: No workload folders detected in the parsed files.")
+        print("This usually means the folder naming pattern is not recognized.")
+        print("Looking for folders with patterns like: UHX2_DC_XXX, CataV3_XXX_XXX, or ending with _###")
+        print("\nERROR: Cannot generate Excel report without folder data.")
+        return None
     
     # Keep original folder order (no sorting)
     sorted_folders = list(folder_data.keys())
@@ -289,14 +397,19 @@ def generate_excel_report(results, folders_info, start_time):
     # Create final DataFrame
     df = pd.DataFrame(all_rows, columns=column_names)
     
-    # Create .testdata directory if it doesn't exist
-    # testdata_dir = Path('.testdata')
-    testdata_dir = Path('//10.54.63.126/Pnpext/Siwoo/code/copoliot_tests')
-    testdata_dir.mkdir(exist_ok=True)
+    # Determine output directory
+    if output_dir is None:
+        # Use input directory as output directory
+        output_path = Path(baseline_path)
+    else:
+        output_path = Path(output_dir)
     
-    # Generate timestamped filename in .testdata folder
+    # Create output directory if it doesn't exist
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    # Generate timestamped filename in output folder
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    excel_filename = testdata_dir / f'baseline_analysis_vertical_{timestamp}.xlsx'
+    excel_filename = output_path / f'workload_analysis_{timestamp}.xlsx'
     
     # Write Excel file
     with pd.ExcelWriter(excel_filename, engine='openpyxl') as writer:
@@ -356,4 +469,37 @@ def generate_excel_report(results, folders_info, start_time):
     return excel_filename
 
 if __name__ == "__main__":
-    main()
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Workload Parser - Parse and analyze workload data from directories",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""\nExamples:
+  python wlparser.py
+      Opens a GUI folder browser to select the workload data directory
+      (output saved to selected folder)
+  
+  python wlparser.py -i "C:\\path\\to\\data"
+      Analyzes the specified workload data directory
+      (output saved to C:\\path\\to\\data)
+  
+  python wlparser.py -i "\\\\server\\share\\data" -o "C:\\reports"
+      Analyzes a network workload directory and saves report to C:\\reports
+        """
+    )
+    parser.add_argument(
+        '-i', '--input',
+        dest='baseline_path',
+        type=str,
+        help='Path to workload data directory'
+    )
+    parser.add_argument(
+        '-o', '--output',
+        dest='output_dir',
+        type=str,
+        help='Output directory for Excel report (default: same as input directory)'
+    )
+    
+    args = parser.parse_args()
+    
+    # Run main with provided path (or None to trigger GUI)
+    main(args.baseline_path, args.output_dir)
