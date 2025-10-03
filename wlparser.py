@@ -315,11 +315,18 @@ def generate_excel_report(results, folders_info, start_time, baseline_path, outp
                     if key == 'power_data' and isinstance(value, dict):
                         # Extract individual power metrics from power_data dictionary
                         for power_metric, power_value in value.items():
-                            # Filter out internal metrics (starting with _), V_* (voltage) and I_* (current) rails
+                            # Filter out internal metrics (starting with _)
                             if power_metric.startswith('_'):
                                 continue  # Skip internal metrics like _soc_power
-                            # If using DAQ config, include all metrics; otherwise filter V_* and I_*
-                            if daq_config_path or not (power_metric.startswith('V_') or power_metric.startswith('I_')):
+                            
+                            # If using DAQ config, ONLY include metrics from daq_targets_order
+                            if daq_config_path:
+                                if power_metric in daq_targets_order:
+                                    folder_data[folder_name][power_metric] = power_value
+                                    if power_metric not in all_metrics:  # Preserve order, avoid duplicates
+                                        all_metrics.append(power_metric)
+                            # Otherwise (auto-detection), include P_* rails only (exclude V_* and I_*)
+                            elif not (power_metric.startswith('V_') or power_metric.startswith('I_')):
                                 folder_data[folder_name][power_metric] = power_value
                                 if power_metric not in all_metrics:  # Preserve order, avoid duplicates
                                     all_metrics.append(power_metric)
