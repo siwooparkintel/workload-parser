@@ -39,7 +39,8 @@ MANIFEST
 
 # PyInstaller
 *.manifest
-*.spec
+# Keep wlparser.spec for building executable
+!wlparser.spec
 
 # Installer logs
 pip-log.txt

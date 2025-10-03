@@ -2,9 +2,29 @@
 
 A modern Python application for parsing and analyzing workload data including power consumption, ETL processes, and socwatch metrics.
 
+## 🚀 Quick Start - Standalone Executable
+
+**No Python installation needed!** Download the standalone executable:
+
+1. Download `wlparser.exe` (~46 MB)
+2. Double-click to run (GUI mode) or use command line
+3. See [README_DISTRIBUTION.md](README_DISTRIBUTION.md) for distribution guide
+
+```powershell
+# Auto-detect all P_* power rails
+wlparser.exe -i "C:\path\to\workload\data"
+
+# Use specific DAQ config
+wlparser.exe -i "C:\path\to\data" -d config\daq_targets_default.json
+```
+
 ## Features
 
+- **Standalone Executable**: Single-file distribution, no dependencies
+- **GUI Folder Browser**: Easy navigation to workload directories
 - **Flexible Parser Framework**: Extensible architecture for adding new data parsers
+- **Auto-Detection**: Automatically finds all P_* power rails from power summary
+- **DAQ Config Mode**: Use predefined power rail targets
 - **Configuration Management**: JSON-based configuration system with validation
 - **Comprehensive Logging**: Structured logging with multiple output formats
 - **Error Handling**: Robust error recovery and reporting
@@ -28,10 +48,27 @@ workload_parser/
 
 ## Installation
 
+**For developers** (end users can use the standalone executable above):
+
 1. Clone the repository
 2. Create a virtual environment: `python -m venv venv`
 3. Activate it: `venv\Scripts\activate` (Windows) or `source venv/bin/activate` (Linux/Mac)
 4. Install dependencies: `pip install -r requirements.txt`
+
+### Building Standalone Executable
+
+To build your own executable:
+
+```powershell
+# Automated build
+.\build_executable.ps1
+
+# Or manual build
+pip install pyinstaller
+pyinstaller wlparser.spec --clean
+```
+
+The executable will be in the `dist/` folder.
 
 ## Usage
 
