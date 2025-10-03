@@ -89,34 +89,30 @@ class PowerParser(BaseParser):
             raise ParsingError(error_msg) from e
     
     def _extract_power_data(self, df) -> Dict[str, float]:
-        """Extract power data based on DAQ targets in configuration order."""
+        """Extract ALL power data from the power summary file."""
         from collections import OrderedDict
         power_data = OrderedDict()
         
-        # Convert DataFrame to dictionary for easier searching (similar to old project)
+        # Convert DataFrame to dictionary for easier searching
         rows_dict = {}
         for _, row in df.iterrows():
             rail_name = str(row.iloc[0]).strip()  # First column is rail name
             rows_dict[rail_name] = row
         
-        # Extract data for each DAQ target in configuration order
+        # Extract ALL metrics from the power summary file
         p_soc = 0
-        for target_rail in self.daq_targets.keys():  # Preserve order from config
-            if target_rail in rows_dict:
-                try:
-                    value = float(rows_dict[target_rail][self.average_column])
-                    power_data[target_rail] = value
+        for rail_name, row in rows_dict.items():
+            try:
+                value = float(row[self.average_column])
+                power_data[rail_name] = value
+                
+                # Track SOC power for energy calculation
+                if 'P_SOC' in rail_name or 'P_MCP' in rail_name:
+                    p_soc = value
                     
-                    # Track SOC power for energy calculation (from old project)
-                    if 'P_SOC' in target_rail or 'P_MCP' in target_rail:
-                        p_soc = value
-                        
-                except (ValueError, KeyError) as e:
-                    self.logger.warning(f"Could not extract value for {target_rail}: {e}")
-                    power_data[target_rail] = -1
-            else:
-                self.logger.debug(f"DAQ target not found in data: {target_rail}")
-                power_data[target_rail] = -1
+            except (ValueError, KeyError) as e:
+                self.logger.warning(f"Could not extract value for {rail_name}: {e}")
+                power_data[rail_name] = -1
         
         # Store SOC power for energy calculations
         if p_soc > 0:

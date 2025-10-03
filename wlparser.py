@@ -78,13 +78,14 @@ def select_folder_gui():
         print(f"ERROR: Failed to open folder dialog: {e}")
         return None
 
-def main(baseline_path=None, output_dir=None):
+def main(baseline_path=None, output_dir=None, daq_config_path=None):
     """
     Main function to parse workload data and generate Excel report
     
     Args:
         baseline_path: Path to workload data directory. If None, will use GUI to select folder.
         output_dir: Output directory for Excel report. If None, uses input directory.
+        daq_config_path: Path to DAQ targets config JSON file. If None, auto-detect power rails.
     """
     # Start timing the entire process
     start_time = time.time()
@@ -221,9 +222,9 @@ def main(baseline_path=None, output_dir=None):
     print(f"Successfully parsed files: {len(results)}")
     
     # Generate Excel report
-    return generate_excel_report(results, folders, start_time, baseline_path, output_dir)
+    return generate_excel_report(results, folders, start_time, baseline_path, output_dir, daq_config_path)
 
-def generate_excel_report(results, folders_info, start_time, baseline_path, output_dir=None):
+def generate_excel_report(results, folders_info, start_time, baseline_path, output_dir=None, daq_config_path=None):
     """Generate Excel report in vertical format matching reference with DAQ targets order
     
     Args:
@@ -232,6 +233,7 @@ def generate_excel_report(results, folders_info, start_time, baseline_path, outp
         start_time: Start time of processing
         baseline_path: Path to input directory
         output_dir: Output directory for Excel report. If None, uses input directory.
+        use_daq_config: If True, use DAQ targets from config. If False, auto-detect power rails.
     """
     
     # Check if we have any results
@@ -239,16 +241,48 @@ def generate_excel_report(results, folders_info, start_time, baseline_path, outp
         print("\nERROR: No data to export. No files were successfully parsed.")
         return None
     
-    # Load DAQ targets order from config
-    config_path = Path('config/enhanced_parser_config.json')
+    # Determine which metrics to include
     daq_targets_order = []
-    if config_path.exists():
-        try:
-            with open(config_path, 'r') as f:
-                config = json.load(f)
-                daq_targets_order = list(config.get('daq_targets', {}).keys())
-        except Exception as e:
-            print(f"Warning: Could not load config for DAQ targets order: {e}")
+    if daq_config_path:
+        # Load DAQ targets order from specified config file
+        config_file = Path(daq_config_path)
+        if config_file.exists():
+            try:
+                with open(config_file, 'r', encoding='utf-8-sig') as f:
+                    config = json.load(f)
+                    # Handle both enhanced config format and simple config format
+                    if 'daq_targets' in config:
+                        # Enhanced config format
+                        daq_targets_order = list(config.get('daq_targets', {}).keys())
+                    else:
+                        # Simple config format (like daq_targets_default.json)
+                        daq_targets_order = list(config.keys())
+                print(f"Using DAQ targets from {config_file}: {len(daq_targets_order)} metrics")
+            except Exception as e:
+                print(f"Warning: Could not load config from {daq_config_path}: {e}")
+                print("Falling back to auto-detection...")
+                daq_config_path = None  # Fall back to auto-detection
+    
+    if not daq_config_path:
+        # Auto-detect power rails from power summary files (exclude V_* and I_* rails)
+        print("Auto-detecting power rails from power summary files...")
+        power_rails = []  # Use list to preserve natural order
+        for result in results:
+            if result.get('_metadata', {}).get('parser_name') == 'power':
+                power_data = result.get('power_data', {})
+                for key in power_data.keys():
+                    # Only include P_* rails, exclude V_* (voltage) and I_* (current)
+                    if key.startswith('P_') and not key.startswith(('V_', 'I_')):
+                        if key not in power_rails:  # Avoid duplicates while preserving order
+                            power_rails.append(key)
+        
+        # Keep natural order from power summary, add Run Time at the end
+        daq_targets_order = power_rails.copy()
+        if 'Run Time' not in daq_targets_order:
+            daq_targets_order.append('Run Time')
+        
+        print(f"Auto-detected {len(power_rails)} power rails (P_*) + Run Time")
+        print(f"Power rails: {', '.join(power_rails[:5])}{'...' if len(power_rails) > 5 else ''}")
     
     # Organize data by folder
     folder_data = {}
@@ -281,9 +315,14 @@ def generate_excel_report(results, folders_info, start_time, baseline_path, outp
                     if key == 'power_data' and isinstance(value, dict):
                         # Extract individual power metrics from power_data dictionary
                         for power_metric, power_value in value.items():
-                            folder_data[folder_name][power_metric] = power_value
-                            if power_metric not in all_metrics:  # Preserve order, avoid duplicates
-                                all_metrics.append(power_metric)
+                            # Filter out internal metrics (starting with _), V_* (voltage) and I_* (current) rails
+                            if power_metric.startswith('_'):
+                                continue  # Skip internal metrics like _soc_power
+                            # If using DAQ config, include all metrics; otherwise filter V_* and I_*
+                            if daq_config_path or not (power_metric.startswith('V_') or power_metric.startswith('I_')):
+                                folder_data[folder_name][power_metric] = power_value
+                                if power_metric not in all_metrics:  # Preserve order, avoid duplicates
+                                    all_metrics.append(power_metric)
                     elif key == 'socwatch_data' and isinstance(value, dict):
                         # Extract individual socwatch metrics from socwatch_data dictionary
                         for socwatch_metric, socwatch_value in value.items():
@@ -476,14 +515,15 @@ if __name__ == "__main__":
         epilog="""\nExamples:
   python wlparser.py
       Opens a GUI folder browser to select the workload data directory
-      (output saved to selected folder)
+      Auto-detects all P_* power rails and Run Time from power summary files
   
   python wlparser.py -i "C:\\path\\to\\data"
-      Analyzes the specified workload data directory
+      Analyzes the specified workload data directory with auto-detected power rails
       (output saved to C:\\path\\to\\data)
   
-  python wlparser.py -i "\\\\server\\share\\data" -o "C:\\reports"
-      Analyzes a network workload directory and saves report to C:\\reports
+  python wlparser.py -i "\\\\server\\share\\data" -o "C:\\reports" -d config/daq_targets_default.json
+      Analyzes a network workload directory using DAQ targets from specified config file
+      and saves report to C:\\reports
         """
     )
     parser.add_argument(
@@ -498,8 +538,15 @@ if __name__ == "__main__":
         type=str,
         help='Output directory for Excel report (default: same as input directory)'
     )
+    parser.add_argument(
+        '-d', '--daq-config',
+        dest='daq_config_path',
+        type=str,
+        default=None,
+        help='Path to DAQ targets config JSON file. If not specified, auto-detects all P_* power rails and Run Time'
+    )
     
     args = parser.parse_args()
     
     # Run main with provided path (or None to trigger GUI)
-    main(args.baseline_path, args.output_dir)
+    main(args.baseline_path, args.output_dir, args.daq_config_path)
