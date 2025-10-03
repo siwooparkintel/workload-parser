@@ -90,6 +90,30 @@ Essential documentation is available:
   - [Technical Guide](docs/pcie/SOCWATCH_HANDLING.md) - Detailed implementation
 - **[Examples](examples/)** - Usage examples and code samples
 
+## Testing
+
+### Unit Tests
+```bash
+python -m pytest tests/test_core.py
+python -m pytest tests/test_pcie_parser.py
+```
+
+### Integration Tests
+Test the parser on real workload data from multiple directories:
+
+```powershell
+# Test all folders with auto-detection
+.\run_integration_tests.ps1
+
+# Quick test (first 5 folders)
+.\run_integration_tests.ps1 -MaxFolders 5
+
+# Test with DAQ configuration
+.\run_integration_tests.ps1 -UseDaqConfig
+```
+
+See [Integration Test Guide](tests/TEST_INTEGRATION_README.md) for details.
+
 ## Development
 
 Run tests: `python -m pytest`
