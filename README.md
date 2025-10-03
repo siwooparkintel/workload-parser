@@ -61,11 +61,11 @@ To build your own executable:
 
 ```powershell
 # Automated build
-.\build_executable.ps1
+.\scripts\build_executable.ps1
 
 # Or manual build
 pip install pyinstaller
-pyinstaller wlparser.spec --clean
+pyinstaller config\wlparser.spec --clean
 ```
 
 The executable will be in the `dist/` folder.

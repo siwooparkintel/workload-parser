@@ -67,36 +67,77 @@ class DataIntegrationTester:
         print(f"✅ Data root validated: {self.data_root}")
         return True
     
-    def find_workload_folders(self) -> List[Path]:
+    def find_workload_folders(self, max_depth: int = 3) -> List[Path]:
         """
-        Find all workload data folders in the data root.
+        Find all workload data folders recursively in the data root.
         
-        Returns folders that match typical workload patterns:
-        - Contains subdirectories
-        - Has potential data files (CSV, ETL, TXT)
+        A folder is considered a workload if it:
+        - Contains data files directly (CSV, ETL, TXT, LOG)
+        - Has subdirectories with PACS summary files or typical workload structure
+        
+        Args:
+            max_depth: Maximum depth to search (default 3 levels)
+        
+        Returns:
+            List of paths to workload folders
         """
         workload_folders = []
         
-        print(f"\n🔍 Scanning for workload folders in: {self.data_root}")
+        print(f"\n🔍 Scanning for workload folders recursively (max depth: {max_depth}) in: {self.data_root}")
         
-        # Get all subdirectories
-        try:
-            for item in self.data_root.iterdir():
-                if item.is_dir():
-                    # Check if folder contains data files or subfolders
-                    has_data = False
+        def is_workload_folder(folder: Path, depth: int) -> bool:
+            """Check if a folder contains workload data."""
+            if depth > max_depth:
+                return False
+            
+            try:
+                # Check for direct data files
+                data_files = list(folder.glob("*.csv")) + list(folder.glob("*.etl")) + \
+                            list(folder.glob("*.txt")) + list(folder.glob("*.log"))
+                
+                # Check for PACS summary files (strong indicator of workload data)
+                pacs_files = list(folder.rglob("*pacs-summary.csv"))
+                
+                # Check for socwatch data
+                socwatch_files = list(folder.glob("socwatch/*.csv"))
+                
+                # It's a workload if it has direct data files OR pacs/socwatch subdirs
+                has_workload_data = (len(data_files) > 0) or (len(pacs_files) > 0) or (len(socwatch_files) > 0)
+                
+                return has_workload_data
+                
+            except (PermissionError, OSError):
+                return False
+        
+        def scan_recursive(current_path: Path, depth: int = 0):
+            """Recursively scan for workload folders."""
+            if depth > max_depth:
+                return
+            
+            try:
+                subdirs = [item for item in current_path.iterdir() if item.is_dir()]
+                
+                # Check each subdirectory
+                for subdir in subdirs:
                     try:
-                        for subitem in item.rglob("*"):
-                            if subitem.is_file() and subitem.suffix.lower() in ['.csv', '.etl', '.txt', '.log']:
-                                has_data = True
-                                break
+                        if is_workload_folder(subdir, depth + 1):
+                            # Get relative path for display
+                            rel_path = subdir.relative_to(self.data_root)
+                            workload_folders.append(subdir)
+                            print(f"   {'  ' * depth}✓ Found: {rel_path}")
+                        else:
+                            # Continue scanning deeper if this isn't a workload folder
+                            scan_recursive(subdir, depth + 1)
                     except (PermissionError, OSError) as e:
-                        print(f"   ⚠️  Cannot access {item.name}: {e}")
-                        continue
-                    
-                    if has_data:
-                        workload_folders.append(item)
-                        print(f"   ✓ Found: {item.name}")
+                        rel_path = subdir.relative_to(self.data_root)
+                        print(f"   {'  ' * depth}⚠️  Cannot access {rel_path}: {e}")
+                        
+            except (PermissionError, OSError) as e:
+                print(f"   {'  ' * depth}⚠️  Cannot scan {current_path.name}: {e}")
+        
+        try:
+            # Start recursive scan from data root
+            scan_recursive(self.data_root, 0)
         
         except (PermissionError, OSError) as e:
             print(f"❌ ERROR: Cannot access data root: {e}")
@@ -146,28 +187,25 @@ class DataIntegrationTester:
             result['stats']['files_found'] = file_count
             print(f"   Files in folder: {file_count}")
             
-            # Determine output file name
-            output_file = self.output_dir / f"{folder_path.name}_report.xlsx"
-            result['output_file'] = str(output_file)
-            
-            # Import and run parser (simulating wlparser.py behavior)
+            # Note: Parser generates its own filename with pattern workload_analysis_YYYYMMDD_HHMMSS.xlsx
+            # We just specify the output directory
             print(f"   Parsing with {'DAQ config' if daq_config_path else 'auto-detection mode'}...")
             
-            # This would normally call the main parsing function
-            # For now, we'll use a placeholder that you can replace with actual parsing logic
-            parse_success = self._run_parser(folder_path, output_file, daq_config_path)
+            # Run parser - it will create output file with its own naming convention
+            parse_success, output_file_path, file_size_kb = self._run_parser(folder_path, self.output_dir, daq_config_path)
             
             if parse_success:
-                result['status'] = 'success'
-                
-                # Check if output file was created
-                if output_file.exists():
-                    result['stats']['output_size_kb'] = output_file.stat().st_size / 1024
-                    print(f"   ✅ Output created: {output_file.name} ({result['stats']['output_size_kb']:.1f} KB)")
+                # Update result with actual output file info
+                if output_file_path and file_size_kb > 0:
+                    result['status'] = 'success'
+                    result['output_file'] = output_file_path
+                    result['stats']['output_size_kb'] = file_size_kb
+                    output_name = Path(output_file_path).name
+                    print(f"   ✅ Output created: {output_name} ({file_size_kb:.1f} KB)")
                 else:
                     result['status'] = 'warning'
-                    result['warnings'].append("Output file not created")
-                    print(f"   ⚠️  Warning: Output file not created")
+                    result['warnings'].append("Output file not found")
+                    print(f"   ⚠️  Warning: Output file not found")
             else:
                 result['status'] = 'failed'
                 result['error'] = "Parser returned failure"
@@ -191,60 +229,59 @@ class DataIntegrationTester:
         
         return result
     
-    def _run_parser(self, folder_path: Path, output_file: Path, daq_config_path: str = None) -> bool:
+    def _run_parser(self, folder_path: Path, output_dir: Path, daq_config_path: str = None) -> tuple:
         """
         Run the parser on a folder using the actual wlparser.py main function.
         
         Args:
             folder_path: Path to workload data folder
-            output_file: Path to output Excel file
+            output_dir: Directory where output files will be created
             daq_config_path: Optional DAQ configuration file path
             
         Returns:
-            True if successful, False otherwise
+            tuple: (success: bool, output_file_path: str or None, file_size_kb: float)
         """
         try:
             # Import the main function from wlparser.py
             import wlparser
             
+            # Record files before parsing to identify new output
+            existing_files = set(output_dir.glob("workload_analysis_*.xlsx"))
+            
             # Call the main function with the appropriate parameters
             # Suppress GUI folder selection by providing baseline_path
             wlparser.main(
                 baseline_path=str(folder_path),
-                output_dir=str(output_file.parent),
+                output_dir=str(output_dir),
                 daq_config_path=daq_config_path
             )
             
-            # Check if output file was created
-            # wlparser.py creates files with pattern: foldername_workload_report_YYYYMMDD_HHMMSS.xlsx
-            # So we need to check if any file was created matching the pattern
-            if output_file.exists():
-                return True
+            # Find newly created files
+            current_files = set(output_dir.glob("workload_analysis_*.xlsx"))
+            new_files = current_files - existing_files
             
-            # Check for any Excel file created in output directory with the folder name
-            output_pattern = f"{folder_path.name}_workload_report_*.xlsx"
-            matching_files = list(output_file.parent.glob(output_pattern))
+            if new_files:
+                # Use the most recent new file
+                most_recent = max(new_files, key=lambda p: p.stat().st_mtime)
+                size_kb = most_recent.stat().st_size / 1024
+                return (True, str(most_recent), size_kb)
             
-            if matching_files:
-                # Update the result to point to the actual file created
-                self.results[-1]['output_file'] = str(matching_files[-1])
-                return True
-            
-            return False
+            return (False, None, 0)
             
         except Exception as e:
             print(f"      Parser error: {e}")
             import traceback
             traceback.print_exc()
-            return False
+            return (False, None, 0)
     
-    def run_all_tests(self, daq_config_path: str = None, max_folders: int = None) -> None:
+    def run_all_tests(self, daq_config_path: str = None, max_folders: int = None, excel_enabled: bool = False) -> None:
         """
         Run tests on all workload folders.
         
         Args:
             daq_config_path: Optional DAQ configuration file path
             max_folders: Optional limit on number of folders to test
+            excel_enabled: If True, generate Excel report in addition to JSON (default: False)
         """
         print("\n" + "="*80)
         print("WORKLOAD PARSER INTEGRATION TEST SUITE")
@@ -296,12 +333,12 @@ class DataIntegrationTester:
         self.generate_reports()
     
     def generate_reports(self) -> None:
-        """Generate test result reports (JSON and Excel)."""
+        """Generate test result reports (JSON format)."""
         print("\n" + "="*80)
         print("GENERATING TEST REPORTS")
         print("="*80)
         
-        # Save JSON report
+        # Save JSON report (always generated)
         json_report = self.output_dir / f"test_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         report_data = {
             'summary': self.summary,
@@ -312,26 +349,6 @@ class DataIntegrationTester:
             json.dump(report_data, f, indent=2, default=str)
         
         print(f"   ✅ JSON report: {json_report}")
-        
-        # Create Excel report with pandas
-        try:
-            excel_report = self.output_dir / f"test_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-            
-            # Create summary dataframe
-            summary_df = pd.DataFrame([self.summary])
-            
-            # Create results dataframe
-            results_df = pd.DataFrame(self.results)
-            
-            # Write to Excel with multiple sheets
-            with pd.ExcelWriter(excel_report, engine='openpyxl') as writer:
-                summary_df.to_excel(writer, sheet_name='Summary', index=False)
-                results_df.to_excel(writer, sheet_name='Detailed Results', index=False)
-            
-            print(f"   ✅ Excel report: {excel_report}")
-        
-        except Exception as e:
-            print(f"   ⚠️  Could not create Excel report: {e}")
         
         # Print summary to console
         self.print_summary()

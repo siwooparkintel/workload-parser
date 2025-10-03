@@ -27,7 +27,7 @@ Write-Host ""
 # Build the executable
 Write-Host "Building executable with PyInstaller..." -ForegroundColor Yellow
 Write-Host "(This may take 1-2 minutes...)" -ForegroundColor Gray
-pyinstaller wlparser.spec --clean
+pyinstaller config\wlparser.spec --clean
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""
