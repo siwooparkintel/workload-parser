@@ -42,6 +42,17 @@ parser = WorkloadParser(config_path="config/parser_config.json")
 results = parser.parse_directory("path/to/workload/data")
 ```
 
+## Documentation
+
+Essential documentation is available:
+
+- **[Documentation Index](docs/README.md)** - Overview of all documentation
+- **[Terminology Guide](docs/TERMINOLOGY_GUIDE.md)** - Key terms and definitions
+- **[PCIe Documentation](docs/pcie/)** - PCIe-only SocWatch data handling
+  - [Quick Reference](docs/pcie/QUICK_REFERENCE.md) - Fast lookups and commands
+  - [Technical Guide](docs/pcie/SOCWATCH_HANDLING.md) - Detailed implementation
+- **[Examples](examples/)** - Usage examples and code samples
+
 ## Development
 
 Run tests: `python -m pytest`

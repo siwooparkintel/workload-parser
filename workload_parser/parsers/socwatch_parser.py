@@ -441,7 +441,8 @@ class SocwatchParser(BaseParser):
         required_etl_files = [
             '_extraSession.etl',
             '_hwSession.etl', 
-            '_infoSession.etl'
+            '_infoSession.etl',
+            '_osSession.etl'  # SocWatch parser requires _osSession.etl
         ]
         
         # Check if all required ETL files exist
@@ -457,8 +458,8 @@ class SocwatchParser(BaseParser):
                     workload_prefix = etl_name.replace(required_suffix, '')
                     break
         
-        # Must have all 3 required ETL files
-        if len(set(etl_files_found)) < 3:
+        # Must have all 4 required ETL files (including _osSession.etl)
+        if len(set(etl_files_found)) < 4:
             return False
         
         # Check if this CSV file matches the workload prefix
@@ -941,33 +942,164 @@ class PCIeParser(BaseParser):
             raise ParsingError(f"Failed to parse PCIe data from {file_path}: {str(e)}")
     
     def _extract_pcie_metrics(self, content: str) -> Dict[str, Any]:
-        """Extract PCIe-specific metrics from content."""
-        pcie_data = {}
+        """Extract PCIe-specific metrics from content using config targets."""
+        from collections import OrderedDict
+        pcie_data = OrderedDict()
         
-        # Look for PCIe-related sections in the content
+        # Load PCIe targets from config
+        pcie_targets = self._load_pcie_targets()
+        
+        if not pcie_targets:
+            self.logger.warning("No PCIe targets defined in config")
+            return {}
+        
         lines = content.split('\n')
         
-        # Extract basic PCIe information for now
-        # This can be enhanced based on actual PCIe data structure
-        for line in lines:
-            line = line.strip()
-            if 'pcie' in line.lower() or 'pci express' in line.lower():
-                # Extract PCIe-related data
-                # For now, just record that PCIe data was found
-                pcie_data['pcie_detected'] = True
-                break
-        
-        # Add placeholder data structure for Excel generation
-        if not pcie_data:
-            pcie_data['pcie_detected'] = False
+        # Process each PCIe target
+        for target in pcie_targets:
+            lookup_text = target['lookup']
+            target_key = target['key']
+            devices = target.get('devices', [])
+            
+            # Find the lookup text in the file
+            table_start_idx = -1
+            for i, line in enumerate(lines):
+                if lookup_text in line:
+                    table_start_idx = i
+                    break
+            
+            if table_start_idx == -1:
+                self.logger.debug(f"PCIe table lookup '{lookup_text}' not found for {target_key}")
+                continue
+            
+            # Extract table data starting after the lookup line
+            table_data = self._extract_pcie_table_data(lines, table_start_idx, target, devices)
+            
+            if table_data:
+                # Flatten the data for Excel reporting with proper grouping
+                for metric_key, metric_value in table_data.items():
+                    data_key = f"{metric_key}        {target_key}"
+                    pcie_data[data_key] = metric_value
+                    
+                self.logger.debug(f"Extracted {len(table_data)} entries for PCIe {target_key}")
         
         return pcie_data
+    
+    def _load_pcie_targets(self) -> List[Dict[str, Any]]:
+        """Load PCIe targets from config."""
+        try:
+            from pathlib import Path
+            import json
+            
+            config_path = Path('config/pcie_targets_default.json')
+            if config_path.exists():
+                with open(config_path, 'r') as f:
+                    return json.load(f)
+            else:
+                self.logger.warning("PCIe config not found, using default targets")
+                return self._get_default_pcie_targets()
+        except Exception as e:
+            self.logger.warning(f"Could not load PCIe targets from config: {e}")
+            return self._get_default_pcie_targets()
+    
+    def _get_default_pcie_targets(self) -> List[Dict[str, Any]]:
+        """Get default PCIe targets if config is not available."""
+        return [
+            {"key": "PCIe_LPM", "devices": ["NVM"], "lookup": "PCIe LPM Summary - Sampled: Approximated Residency (Percentage)"},
+            {"key": "PCIe_Active", "devices": ["NVM"], "lookup": "PCIe Link Active Summary - Sampled: Approximated Residency (Percentage)"},
+            {"key": "PCIe_LTRsnoop", "devices": ["NVM"], "lookup": "PCIe LTR Snoop Summary - Sampled: Histogram"}
+        ]
+    
+    def _extract_pcie_table_data(self, lines: List[str], lookup_idx: int, target: Dict[str, Any], devices: List[str]) -> Dict[str, Any]:
+        """Extract PCIe table data using device-specific parsing."""
+        target_key = target['key']
+        
+        # Start from the line after the lookup text
+        current_idx = lookup_idx + 1
+        
+        # Collect raw table lines until empty line or end of file
+        raw_table_lines = []
+        while current_idx < len(lines):
+            line = lines[current_idx].strip()
+            
+            # Empty line marks end of table
+            if not line:
+                break
+            
+            # Skip separator lines (only dashes)
+            if line.startswith('---') or line.replace('-', '').replace(' ', '') == '':
+                current_idx += 1
+                continue
+            
+            # Add line to raw table data
+            # Split by comma and clean up each part
+            parts = [part.strip().strip('"') for part in line.split(',') if part.strip()]
+            if parts:  # Only add non-empty rows
+                raw_table_lines.append(parts)
+            
+            current_idx += 1
+        
+        # If no table data found, return empty dict
+        if not raw_table_lines:
+            return {}
+        
+        # Parse based on table type
+        try:
+            if target_key in ['PCIe_LPM', 'PCIe_Active', 'PCIe_LTRsnoop']:
+                return self._parse_pcie_device_table(raw_table_lines, devices)
+            else:
+                # Default residency table parsing
+                return self._parse_pcie_default_table(raw_table_lines)
+        except Exception as e:
+            self.logger.warning(f"Failed to parse PCIe {target_key} table: {e}")
+            return {}
+    
+    def _parse_pcie_device_table(self, table_lines: List[str], devices: List[str]) -> Dict[str, Any]:
+        """Parse PCIe table with device-specific data (NVM, WiFi, etc.)."""
+        data = {}
+        
+        # First line should be the header
+        if not table_lines:
+            return data
+        
+        header = table_lines[0]
+        
+        # Process each data row
+        for row_idx in range(1, len(table_lines)):
+            row = table_lines[row_idx]
+            
+            # Check if this row contains any of the target devices
+            for device in devices:
+                if device in row[0]:
+                    # Extract data for each column
+                    for col_idx, col_header in enumerate(header):
+                        if col_idx < len(row):
+                            key = f"{col_header}_{device}"
+                            data[key] = row[col_idx]
+        
+        return data
+    
+    def _parse_pcie_default_table(self, table_lines: List[str]) -> Dict[str, Any]:
+        """Parse default PCIe residency table."""
+        data = {}
+        
+        for row in table_lines:
+            if len(row) >= 2:
+                key = row[0]
+                value = row[1]
+                data[key] = value
+        
+        return data
     
     def validate_data(self, data: Dict[str, Any]) -> bool:
         """Validate parsed PCIe data."""
         if not super().validate_data(data):
             return False
         
-        # Check if we have pcie data
-        pcie_data = data.get('pcie_data', {})
+        # Check if we have pcie_data key
+        if 'pcie_data' not in data:
+            return False
+        
+        # Check if pcie_data is a dict
+        pcie_data = data.get('pcie_data')
         return isinstance(pcie_data, dict)

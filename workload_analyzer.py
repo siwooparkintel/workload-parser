@@ -65,6 +65,10 @@ def main():
             # Extract socwatch metrics from socwatch_data dictionary
             socwatch_data = result.get('socwatch_data', {})
             print(f"   Socwatch metrics extracted: {len(socwatch_data)}")
+        elif parser_name == 'pcie':
+            # Extract PCIe metrics from pcie_data dictionary
+            pcie_data = result.get('pcie_data', {})
+            print(f"   PCIe metrics extracted: {len(pcie_data)}")
         elif parser_name == 'etl':
             print(f"   ETL file processed")
     
@@ -94,6 +98,7 @@ def main():
     power_only = []
     etl_power = []
     socwatch_power = []
+    pcie_power = []
     
     for folder_name, parsers in sorted(folders.items()):
         parsers_list = sorted(list(parsers))
@@ -106,6 +111,9 @@ def main():
         elif 'socwatch' in parsers and 'power' in parsers:
             socwatch_power.append(folder_name)
             print(f"{folder_name}: Socwatch+Power - Parsers: {parsers_list}")
+        elif 'pcie' in parsers and 'power' in parsers:
+            pcie_power.append(folder_name)
+            print(f"{folder_name}: PCIe+Power - Parsers: {parsers_list}")
         else:
             print(f"{folder_name}: Other combination - Parsers: {parsers_list}")
     
@@ -113,6 +121,7 @@ def main():
     print(f"Power-only folders ({len(power_only)}): {power_only}")
     print(f"ETL+Power folders ({len(etl_power)}): {etl_power}")
     print(f"Socwatch+Power folders ({len(socwatch_power)}): {socwatch_power}")
+    print(f"PCIe+Power folders ({len(pcie_power)}): {pcie_power}")
     
         # Show sample metrics
     if results:
@@ -181,6 +190,12 @@ def generate_excel_report(results, folders_info, start_time):
                             folder_data[folder_name][socwatch_metric] = socwatch_value
                             if socwatch_metric not in all_metrics:  # Preserve order, avoid duplicates
                                 all_metrics.append(socwatch_metric)
+                    elif key == 'pcie_data' and isinstance(value, dict):
+                        # Extract individual PCIe metrics from pcie_data dictionary
+                        for pcie_metric, pcie_value in value.items():
+                            folder_data[folder_name][pcie_metric] = pcie_value
+                            if pcie_metric not in all_metrics:  # Preserve order, avoid duplicates
+                                all_metrics.append(pcie_metric)
                     else:
                         # Handle file_info fields - extract just the path value
                         if key in ['file_info', 'etl_file_info', 'socwatch_file_info'] and isinstance(value, dict):
