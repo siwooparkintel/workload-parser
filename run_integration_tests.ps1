@@ -93,20 +93,20 @@ $testArgs = @("--data-root", $DataRoot, "--output-dir", $OutputDir)
 
 if ($MaxFolders -gt 0) {
     $testArgs += @("--max-folders", $MaxFolders)
-    Write-Host "⚠ Testing limited to first $MaxFolders folders" -ForegroundColor Yellow
+    Write-Host "WARNING: Testing limited to first $MaxFolders folders" -ForegroundColor Yellow
 }
 
 if ($UseDaqConfig) {
     $daqConfigPath = "config\daq_targets_default.json"
     if (Test-Path $daqConfigPath) {
         $testArgs += @("--daq-config", $daqConfigPath)
-        Write-Host "✓ Using DAQ configuration: $daqConfigPath" -ForegroundColor Green
+        Write-Host "OK: Using DAQ configuration: $daqConfigPath" -ForegroundColor Green
     } else {
-        Write-Host "⚠ DAQ config not found: $daqConfigPath" -ForegroundColor Yellow
+        Write-Host "WARNING: DAQ config not found: $daqConfigPath" -ForegroundColor Yellow
         Write-Host "  Continuing with auto-detection mode" -ForegroundColor Yellow
     }
 } else {
-    Write-Host "✓ Using auto-detection mode" -ForegroundColor Green
+    Write-Host "OK: Using auto-detection mode" -ForegroundColor Green
 }
 
 # Create output directory
