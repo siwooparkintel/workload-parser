@@ -483,6 +483,11 @@ class SocwatchParser(BaseParser):
             # Flatten the tables for Excel reporting while maintaining grouping and order
             target_metrics = self._extract_target_metrics(socwatch_tables)
             
+            # Check if any metrics were extracted
+            if not target_metrics:
+                self.logger.warning(f"No matching Socwatch target tables found in {file_path}. "
+                                   f"The CSV may not contain any of the configured target tables.")
+            
             # Prepare result
             result = {
                 'socwatch_data': target_metrics,
@@ -926,6 +931,11 @@ class PCIeParser(BaseParser):
             
             # Extract PCIe-specific metrics
             pcie_data = self._extract_pcie_metrics(content)
+            
+            # Check if any metrics were extracted
+            if not pcie_data:
+                self.logger.warning(f"No matching PCIe target tables found in {file_path}. "
+                                   f"The CSV may not contain any of the configured PCIe target tables.")
             
             # Prepare result
             result = {
