@@ -1,5 +1,15 @@
 """
 Main workload parser framework.
+
+This module provides the core parsing infrastructure for workload data analysis.
+Supports multiple parser types for different file formats and data sources.
+
+Features:
+- Extensible parser registry system
+- Enhanced configuration with auto-detection and DAQ config modes
+- Power rail auto-detection from PACS summary files
+- DAQ configuration support for predefined power rail targets
+- Comprehensive logging and error handling
 """
 
 import logging
@@ -13,7 +23,12 @@ from ..utils.logger import setup_logging
 
 
 class BaseParser(ABC):
-    """Abstract base class for all parsers."""
+    """
+    Abstract base class for all parsers.
+    
+    All custom parsers must inherit from this class and implement
+    the can_parse() and parse() methods.
+    """
     
     def __init__(self, config: Dict[str, Any] = None):
         self.config = config or {}
@@ -74,7 +89,23 @@ class ParserRegistry:
 
 
 class WorkloadParser:
-    """Main workload parser orchestrator."""
+    """
+    Main workload parser orchestrator.
+    
+    Coordinates parsing of workload data files using registered parsers.
+    Supports both individual file parsing and directory-level batch processing.
+    
+    Features:
+    - Auto-detection of power rails from PACS summary files
+    - DAQ configuration support for predefined targets
+    - Enhanced parser configuration system
+    - Comprehensive error handling and logging
+    - Extensible parser registry
+    
+    Args:
+        config_path: Path to configuration JSON file (optional)
+        config: Pre-configured ParserConfig instance (optional)
+    """
     
     def __init__(self, config_path: Optional[str] = None, config: Optional[ParserConfig] = None):
         # Load configuration

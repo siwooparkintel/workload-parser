@@ -6,9 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "workload-parser"
 version = "1.0.0"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"},
+    {name = "Intel Corporation", email = "workload-parser@intel.com"},
 ]
-description = "A modern framework for parsing and analyzing workload data"
+description = "Comprehensive workload data parser with standalone executable support, GUI, auto-detection, and DAQ configuration"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.8"

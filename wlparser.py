@@ -2,13 +2,27 @@
 Workload Analyzer - Comprehensive workload data parsing and analysis tool
 
 This script parses workload data from directories containing:
-- Power measurement files (PACS summary)
+- Power measurement files (PACS summary with auto-detection of P_* rails)
 - ETL trace files 
 - Socwatch monitoring data
 - Model output files
 
-Generates detailed Excel reports with performance metrics, timing analysis,
-and comprehensive data extraction from multiple file formats.
+Features:
+- **Standalone Executable**: Can be built as wlparser.exe with all dependencies bundled
+- **GUI Folder Browser**: Interactive folder selection when no path provided
+- **Auto-Detection Mode**: Automatically detects all P_* power rails from power summary
+- **DAQ Config Mode**: Use predefined power rail targets from DAQ configuration
+- **Comprehensive Output**: Generates detailed Excel reports with metrics and timing
+
+Usage:
+  # GUI mode (folder browser)
+  wlparser.exe
+  
+  # Auto-detect all P_* power rails
+  wlparser.exe -i "path/to/workload/data"
+  
+  # Use DAQ config for specific power rails
+  wlparser.exe -i "path/to/data" -d config/daq_targets_default.json
 """
 import sys
 import os

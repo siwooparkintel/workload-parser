@@ -31,12 +31,12 @@ else:
 setup(
     name="workload-parser",
     version="1.0.0",
-    author="Your Name",
-    author_email="your.email@example.com",
-    description="A modern framework for parsing and analyzing workload data",
+    author="Intel Corporation",
+    author_email="workload-parser@intel.com",
+    description="Comprehensive workload data parser with standalone executable support, GUI, auto-detection, and DAQ configuration",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/workload-parser",
+    url="https://github.com/siwooparkintel/workload-parser",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",

@@ -1,5 +1,15 @@
 """
 Command-line interface for the Workload Parser.
+
+This module provides CLI functionality for the workload parser.
+Note: The main CLI entry point is wlparser.py in the project root,
+which provides additional features like:
+- GUI folder browser (when no arguments provided)
+- Auto-detection of P_* power rails
+- DAQ configuration support
+- Enhanced Excel report generation
+
+For standalone executable usage, see README_DISTRIBUTION.md
 """
 
 import sys
@@ -19,10 +29,19 @@ from .core.exceptions import ParsingError, ConfigurationError
 
 
 def simple_cli():
-    """Simple CLI without click dependency."""
+    """
+    Simple CLI without click dependency.
+    
+    Note: This is a basic CLI interface. For full functionality including
+    GUI folder browser, auto-detection, and DAQ config support, use wlparser.py
+    or the standalone executable wlparser.exe.
+    """
     import argparse
     
-    parser = argparse.ArgumentParser(description="Workload Parser - Parse and analyze workload data")
+    parser = argparse.ArgumentParser(
+        description="Workload Parser - Parse and analyze workload data",
+        epilog="For full functionality, use wlparser.py or wlparser.exe"
+    )
     parser.add_argument("input_path", help="Path to file or directory to parse")
     parser.add_argument("-c", "--config", help="Path to configuration file")
     parser.add_argument("-o", "--output", help="Output file path (JSON format)")
