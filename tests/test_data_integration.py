@@ -274,13 +274,73 @@ class DataIntegrationTester:
             traceback.print_exc()
             return (False, None, 0)
     
+    def test_parent_directory(self, parent_path: Path, daq_config_path: str = None) -> dict:
+        """
+        Test parsing entire parent directory to generate consolidated report.
+        
+        Args:
+            parent_path: Path to parent directory containing workload folders
+            daq_config_path: Optional DAQ configuration file path
+            
+        Returns:
+            Dictionary containing test results
+        """
+        result = {
+            'folder_name': parent_path.name,
+            'folder_path': str(parent_path),
+            'status': 'unknown',
+            'parser_status': 'pending',
+            'output_file': None,
+            'output_size_kb': 0,
+            'num_workload_folders': 0,
+            'error_message': None
+        }
+        
+        try:
+            # Count workload folders
+            folders = self.find_workload_folders()
+            result['num_workload_folders'] = len(folders)
+            
+            print(f"Testing: {parent_path.name}")
+            print(f"   Path: {parent_path}")
+            print(f"   Workload folders found: {len(folders)}")
+            
+            # Run parser on parent directory (consolidated mode)
+            parse_success, output_file_path, file_size_kb = self._run_parser(parent_path, self.output_dir, daq_config_path)
+            
+            if parse_success:
+                result['parser_status'] = 'success'
+                result['output_file'] = output_file_path
+                result['output_size_kb'] = file_size_kb
+                
+                if file_size_kb > 0:
+                    result['status'] = 'success'
+                    print(f"   ✅ SUCCESS - Consolidated report generated ({file_size_kb:.2f} KB)")
+                else:
+                    result['status'] = 'warning'
+                    print(f"   ⚠️  WARNING - Report generated but appears empty")
+            else:
+                result['parser_status'] = 'failed'
+                result['status'] = 'failed'
+                result['error_message'] = 'Parser failed to generate report'
+                print(f"   ❌ FAILED - Parser error")
+                
+        except Exception as e:
+            result['status'] = 'failed'
+            result['error_message'] = str(e)
+            print(f"   ❌ FAILED - {e}")
+            import traceback
+            traceback.print_exc()
+        
+        return result
+    
     def run_all_tests(self, daq_config_path: str = None, max_folders: int = None, excel_enabled: bool = False) -> None:
         """
-        Run tests on all workload folders.
+        Run tests on parent directory using wlparser to generate consolidated report.
         
         Args:
             daq_config_path: Optional DAQ configuration file path
-            max_folders: Optional limit on number of folders to test
+            max_folders: Optional limit on number of folders to test (not used in consolidated mode)
             excel_enabled: If True, generate Excel report in addition to JSON (default: False)
         """
         print("\n" + "="*80)
@@ -294,35 +354,27 @@ class DataIntegrationTester:
         if not self.validate_data_root():
             return
         
-        # Find workload folders
+        # Find workload folders (for informational purposes)
         folders = self.find_workload_folders()
         
         if not folders:
             print("\n❌ No workload folders found to test!")
             return
         
-        # Limit number of folders if specified
-        if max_folders and len(folders) > max_folders:
-            print(f"\n⚠️  Limiting test to first {max_folders} folders (found {len(folders)})")
-            folders = folders[:max_folders]
-        
         self.summary['total_folders'] = len(folders)
         
-        # Test each folder
-        print(f"\n🚀 Starting tests on {len(folders)} folders...")
+        # Test entire directory in consolidated mode
+        print(f"\n🚀 Generating consolidated report for {len(folders)} workload folders...")
+        result = self.test_parent_directory(self.data_root, daq_config_path)
+        self.results.append(result)
         
-        for idx, folder in enumerate(folders, 1):
-            print(f"\n[{idx}/{len(folders)}] ", end="")
-            result = self.test_single_folder(folder, daq_config_path)
-            self.results.append(result)
-            
-            # Update summary
-            if result['status'] == 'success':
-                self.summary['successful'] += 1
-            elif result['status'] == 'failed':
-                self.summary['failed'] += 1
-            elif result['status'] == 'warning':
-                self.summary['warnings'] += 1
+        # Update summary
+        if result['status'] == 'success':
+            self.summary['successful'] += 1
+        elif result['status'] == 'failed':
+            self.summary['failed'] += 1
+        elif result['status'] == 'warning':
+            self.summary['warnings'] += 1
         
         # Calculate total time
         end_time = time.time()
@@ -360,12 +412,11 @@ class DataIntegrationTester:
         print("="*80)
         
         print(f"\n📊 Overall Statistics:")
-        print(f"   Total folders tested: {self.summary['total_folders']}")
-        print(f"   ✅ Successful: {self.summary['successful']} ({self.summary['successful']/max(1, self.summary['total_folders'])*100:.1f}%)")
-        print(f"   ❌ Failed: {self.summary['failed']} ({self.summary['failed']/max(1, self.summary['total_folders'])*100:.1f}%)")
-        print(f"   ⚠️  Warnings: {self.summary['warnings']} ({self.summary['warnings']/max(1, self.summary['total_folders'])*100:.1f}%)")
+        print(f"   Workload folders found: {self.summary['total_folders']}")
+        print(f"   ✅ Report generation: {'Successful' if self.summary['successful'] > 0 else 'Failed'}")
+        print(f"   ❌ Failed: {self.summary['failed']}")
+        print(f"   ⚠️  Warnings: {self.summary['warnings']}")
         print(f"   ⏱️  Total time: {self.summary['total_time']:.2f} seconds")
-        print(f"   ⏱️  Average time per folder: {self.summary['total_time']/max(1, self.summary['total_folders']):.2f} seconds")
         
         # List failed folders
         if self.summary['failed'] > 0:

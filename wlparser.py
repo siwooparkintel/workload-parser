@@ -92,6 +92,128 @@ def select_folder_gui():
         print(f"ERROR: Failed to open folder dialog: {e}")
         return None
 
+def extract_workload_folder(file_path: str, root_path: str) -> str:
+    """
+    Extract workload folder identifier from file path using adaptive strategies.
+    
+    This function intelligently identifies the workload boundary by analyzing the path
+    structure and looking for indicators of workload data (PACS files, ETL files, etc.)
+    
+    Strategies (in order of preference):
+    1. Find parent folder containing pacs-summary.csv (strongest indicator)
+    2. Find parent folder containing .etl files
+    3. Find folder 2-3 levels deep from root (common structure)
+    4. Use folder containing the file itself
+    5. Fall back to first folder after root
+    
+    Args:
+        file_path: Full path to the data file
+        root_path: Root directory of the workload data
+    
+    Returns:
+        Workload folder identifier (folder name, not full path)
+    """
+    from pathlib import Path
+    import re
+    
+    file_path_obj = Path(file_path)
+    root_path_obj = Path(root_path)
+    
+    # Get path parts relative to root
+    try:
+        relative_path = file_path_obj.relative_to(root_path_obj)
+        path_parts = relative_path.parts
+    except ValueError:
+        # File is not under root_path, use absolute parts
+        path_parts = file_path_obj.parts
+    
+    if not path_parts:
+        return "unknown"
+    
+    # Strategy 1: Check if any parent contains pacs-summary.csv (strongest indicator)
+    current = file_path_obj.parent
+    pacs_folders = []
+    
+    # First pass: find all folders with PACS files
+    check_current = current
+    for _ in range(5):  # Check up to 5 levels up
+        if check_current == root_path_obj or check_current.parent == check_current:
+            break
+        
+        # Check for PACS summary files
+        if any(check_current.glob("*pacs-summary.csv")):
+            pacs_folders.append(check_current)
+        
+        # Check subdirs for PACS files
+        try:
+            for subdir in check_current.iterdir():
+                if subdir.is_dir() and any(subdir.glob("*pacs-summary.csv")):
+                    pacs_folders.append(subdir)
+        except (PermissionError, OSError):
+            pass
+        
+        check_current = check_current.parent
+    
+    # If we found PACS folders, find their common parent that's NOT a run folder
+    if pacs_folders:
+        # Check if the PACS folder looks like a run folder (_000, _001, etc)
+        pacs_folder = pacs_folders[0]
+        if re.search(r'_\d{3,4}$', pacs_folder.name):
+            # This is a run folder, check its parent
+            parent = pacs_folder.parent
+            # If parent is also a run folder (doubled structure), go up one more level
+            if parent != root_path_obj and re.search(r'_\d{3,4}$', parent.name):
+                parent = parent.parent
+            if parent != root_path_obj and parent.name:
+                return parent.name
+        # Otherwise, use the PACS folder itself
+        return pacs_folder.name
+    
+    # Strategy 2: Look for patterns in parent folders
+    # This handles common patterns without being too restrictive
+    current = file_path_obj.parent
+    for _ in range(4):  # Check up to 4 levels up
+        if current == root_path_obj or current.parent == current:
+            break
+        
+        folder_name = current.name
+        
+        # Check for various workload patterns (more inclusive)
+        # - Ends with digits (run numbers): _000, _001, etc.
+        # - Contains version numbers: v1_2_3, v0_4_3
+        # - Model names: Model_XXX, AI_NPU_XXX
+        # - Standard test patterns: UHX2_DC_XXX, CataV3_XXX
+        if (re.search(r'_\d{3,4}$', folder_name) or  # Ends with _000, _0000
+            re.search(r'_v\d+_\d+', folder_name) or  # Contains version like v1_2_3
+            folder_name.startswith(('Model_', 'AI_NPU_', 'UHX2_', 'CataV3_', 'GPU', 'NPU'))):
+            
+            # If this folder looks like a run folder (ends with _000, _001, etc.), 
+            # use its parent as the workload identifier
+            if re.search(r'_\d{3,4}$', folder_name):
+                parent = current.parent
+                if parent != root_path_obj and parent.name:
+                    return parent.name
+            
+            return folder_name
+        
+        current = current.parent
+    
+    # Strategy 3: Use depth-based heuristic
+    # For nested structures, the workload is usually 2-3 levels deep
+    if len(path_parts) >= 2:
+        # If we have: GPU/workload1/run_000/file.csv
+        # Return 'run_000' (the deepest meaningful folder)
+        # But if we have: GPU/workload1/file.csv
+        # Return 'workload1'
+        if len(path_parts) >= 3:
+            return path_parts[-2]  # Parent folder of file
+        else:
+            return path_parts[-2] if len(path_parts) > 1 else path_parts[0]
+    
+    # Strategy 4: Fall back to immediate parent folder
+    return file_path_obj.parent.name if file_path_obj.parent.name else "unknown"
+
+
 def main(baseline_path=None, output_dir=None, daq_config_path=None):
     """
     Main function to parse workload data and generate Excel report
@@ -168,24 +290,14 @@ def main(baseline_path=None, output_dir=None, daq_config_path=None):
     # Analyze folder types
     print(f"\nFolder Analysis by Collection Type:")
     
-    # Group by folder
+    # Group by folder using flexible detection
     folders = {}
     for result in results:
         file_path = result.get('_metadata', {}).get('file_path', '')
         parser_name = result.get('_metadata', {}).get('parser_name', '')
         
-        # Extract folder name - look for common patterns like UHX2_DC_XXX or CataV3_XXX_XXX
-        folder_name = None
-        path_parts = file_path.replace('\\', '/').split('/')
-        
-        # Try to find a folder that looks like a test directory
-        # Common patterns: UHX2_DC_XXX, CataV3_XXX_XXX, or any folder ending with _XXX where XXX is digits
-        import re
-        for part in path_parts:
-            # Match patterns like: UHX2_DC_000, CataV3_PCDfix_000, etc.
-            if re.search(r'_\d{3}$', part) or part.startswith('UHX2_DC_') or part.startswith('CataV3_'):
-                folder_name = part
-                break
+        # Extract workload folder name using adaptive strategies
+        folder_name = extract_workload_folder(file_path, baseline_path)
         
         if folder_name:
             if folder_name not in folders:
@@ -295,6 +407,8 @@ def generate_excel_report(results, folders_info, start_time, baseline_path, outp
         if 'Run Time' not in daq_targets_order:
             daq_targets_order.append('Run Time')
         
+        # Note: power_summary_path will appear after Energy (J) in other_metrics section
+        
         print(f"Auto-detected {len(power_rails)} power rails (P_*) + Run Time")
         print(f"Power rails: {', '.join(power_rails[:5])}{'...' if len(power_rails) > 5 else ''}")
     
@@ -308,16 +422,8 @@ def generate_excel_report(results, folders_info, start_time, baseline_path, outp
         file_path = result.get('_metadata', {}).get('file_path', '')
         parser_name = result.get('_metadata', {}).get('parser_name', '')
         
-        # Extract folder name - look for common patterns
-        folder_name = None
-        path_parts = file_path.replace('\\', '/').split('/')
-        
-        # Try to find a folder that looks like a test directory
-        for part in path_parts:
-            # Match patterns like: UHX2_DC_000, CataV3_PCDfix_000, etc.
-            if re.search(r'_\d{3}$', part) or part.startswith('UHX2_DC_') or part.startswith('CataV3_'):
-                folder_name = part
-                break
+        # Extract folder name using adaptive strategies
+        folder_name = extract_workload_folder(file_path, baseline_path)
         
         if folder_name:
             if folder_name not in folder_data:
@@ -364,7 +470,7 @@ def generate_excel_report(results, folders_info, start_time, baseline_path, outp
                             
                             # Create unique metric names for different parsers
                             if parser_name == 'power':
-                                metric_name = key
+                                metric_name = 'power_summary_path'  # Use lowercase snake_case
                             elif parser_name == 'socwatch':
                                 metric_name = f"socwatch_{key}"
                             else:
@@ -434,16 +540,12 @@ def generate_excel_report(results, folders_info, start_time, baseline_path, outp
     # Create header rows as lists to match the vertical structure
     header_rows = []
     
-    # Data label row
-    data_label_row = ['Data label'] + ['WW2533.2_CataV3ITCCAUHX2_DCBAL'] * len(sorted_folders)
-    header_rows.append(data_label_row)
-    
     # Condition row
     condition_row = ['Condition'] + ['Baseline'] * len(sorted_folders)
     header_rows.append(condition_row)
     
-    # Create column names: 'Data label' + folder names
-    column_names = ['Data label'] + list(df_vertical.columns)
+    # Create column names: 'Metric' + folder names
+    column_names = ['Metric'] + list(df_vertical.columns)
     
     # Convert transposed DataFrame to list of lists for easier concatenation
     metric_rows = []
